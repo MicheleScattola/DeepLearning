@@ -1,0 +1,18 @@
+import model sm-full
+# Force the outgoing tau- to be Left-handed, and the tau+ to be Right-handed
+generate e+ e- > Z > ta-{L} ta+{R}
+output rho_LH
+
+launch -n LH
+shower=Pythia8
+detector=Delphes
+analysis=OFF
+done
+
+./card_IDEA.tcl
+set pythia8_card TauDecays:mode 2
+set pythia8_card TauDecays:externalMode 0
+set pythia8_card 15:onMode off
+set pythia8_card 15:onIfMatch 211 111 16
+set nevents 500000
+done

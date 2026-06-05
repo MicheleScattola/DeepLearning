@@ -1,0 +1,70 @@
+#************************************************************
+#*                     MadGraph5_aMC@NLO                    *
+#*                                                          *
+#*                *                       *                 *
+#*                  *        * *        *                   *
+#*                    * * * * 5 * * * *                     *
+#*                  *        * *        *                   *
+#*                *                       *                 *
+#*                                                          *
+#*                                                          *
+#*         VERSION 3.6.7                 2026-01-05         *
+#*                                                          *
+#*    The MadGraph5_aMC@NLO Development Team - Find us at   *
+#*    https://server06.fynu.ucl.ac.be/projects/madgraph     *
+#*                                                          *
+#************************************************************
+#*                                                          *
+#*               Command File for MadGraph5_aMC@NLO         *
+#*                                                          *
+#*     run as ./bin/mg5_aMC  filename                       *
+#*                                                          *
+#************************************************************
+set group_subprocesses Auto
+set ignore_six_quark_processes False
+set low_mem_multicore_nlo_generation False
+set complex_mass_scheme False
+set include_lepton_initiated_processes False
+set gauge unitary
+set loop_optimized_output True
+set loop_color_flows False
+set max_npoint_for_channel 0
+set default_unset_couplings 99
+set max_t_for_channel 99
+set zerowidth_tchannel True
+set nlo_mixed_expansion True
+import model SM
+Traceback (most recent call last):
+  File "/home/mike/Physics/labParticles/MG5_aMC_v3_6_7/madgraph/interface/extended_cmd.py", line 1575, in onecmd
+    return self.onecmd_orig(line, **opt)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mike/Physics/labParticles/MG5_aMC_v3_6_7/madgraph/interface/extended_cmd.py", line 1524, in onecmd_orig
+    return func(arg, **opt)
+           ^^^^^^^^^^^^^^^^
+  File "/home/mike/Physics/labParticles/MG5_aMC_v3_6_7/madgraph/interface/master_interface.py", line 281, in do_import
+    self.cmd.do_import(self, *args, **opts)
+  File "/home/mike/Physics/labParticles/MG5_aMC_v3_6_7/madgraph/interface/madgraph_interface.py", line 5796, in do_import
+    self.import_command_file(args[1])
+  File "/home/mike/Physics/labParticles/MG5_aMC_v3_6_7/madgraph/interface/extended_cmd.py", line 1723, in import_command_file
+    self.exec_cmd(line, precmd=True)
+  File "/home/mike/Physics/labParticles/MG5_aMC_v3_6_7/madgraph/interface/extended_cmd.py", line 1604, in exec_cmd
+    stop = Cmd.onecmd_orig(current_interface, line, **opt)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mike/Physics/labParticles/MG5_aMC_v3_6_7/madgraph/interface/extended_cmd.py", line 1524, in onecmd_orig
+    return func(arg, **opt)
+           ^^^^^^^^^^^^^^^^
+  File "/home/mike/Physics/labParticles/MG5_aMC_v3_6_7/madgraph/interface/master_interface.py", line 281, in do_import
+    self.cmd.do_import(self, *args, **opts)
+  File "/home/mike/Physics/labParticles/MG5_aMC_v3_6_7/madgraph/interface/madgraph_interface.py", line 5720, in do_import
+    self._curr_model = import_ufo.import_model(args[1], prefix=prefix,
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mike/Physics/labParticles/MG5_aMC_v3_6_7/models/import_ufo.py", line 250, in import_model
+    model_path, restrict_file, restrict_name = get_path_restrict(model_name, restrict)
+                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mike/Physics/labParticles/MG5_aMC_v3_6_7/models/import_ufo.py", line 206, in get_path_restrict
+    model_path = find_ufo_path(model_name)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mike/Physics/labParticles/MG5_aMC_v3_6_7/models/import_ufo.py", line 98, in find_ufo_path
+    raise UFOImportError("Path %s is not a valid pathname" % model_name)
+models.import_ufo.UFOImportError: Path SM is not a valid pathname
+Fail to write options with error No model currently active, please import a model!
