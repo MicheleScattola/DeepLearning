@@ -1,0 +1,6 @@
+[submodule "Project/lib/theta"]
+	path = Project/lib/theta
+	url = git@github.com:RiemannAI/theta.git
+[submodule "lib"]
+	path = lib
+	url = git@github.com:RiemannAI/theta.git
