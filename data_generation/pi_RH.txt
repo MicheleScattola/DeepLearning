@@ -9,7 +9,7 @@ detector=Delphes
 analysis=OFF
 done
 
-/home/mike/Physics/deepLearning/card_IDEA.tcl
+/home/mike/Physics/deepLearning/data_generation/card_IDEA.tcl
 set pythia8_card TauDecays:mode 2
 set pythia8_card TauDecays:externalMode 0
 set pythia8_card 15:onMode off
