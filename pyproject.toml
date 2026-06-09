@@ -11,4 +11,5 @@ dependencies = [
     "numba>=0.65.1",
     "numpy>=2.4.6",
     "tensorflow>=2.21.0",
+    "uproot>=5.7.4",
 ]
