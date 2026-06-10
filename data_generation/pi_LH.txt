@@ -8,6 +8,10 @@ shower=Pythia8
 detector=Delphes
 analysis=OFF
 done
+set lpp1 0
+set lpp2 0
+set ebeam1 45.6
+set ebeam2 45.6
 
 /home/mike/Physics/deepLearning/data_generation/card_IDEA.tcl
 set pythia8_card TauDecays:mode 2
