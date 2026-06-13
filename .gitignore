@@ -11,3 +11,5 @@ wheels/
 
 # Data generation
 *.root
+
+rbtm_workspace/theta/*
