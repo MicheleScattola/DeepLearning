@@ -4,12 +4,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # Ensure the freshly compiled theta library can be found locally
-sys.path.append(os.path.abspath("./theta"))
+#sys.path.append(os.path.abspath("./theta"))
+import theta
 from theta.rtbm import RTBM
 from theta.minimizer import CMA
 from theta.costfunctions import logarithmic
 
-MAXITER = 280
+MAXITER = 30
 
 # --- 1. Load Datasets ---
 # Feature Order: [0='x', 1='E_cone', 2='f_had', 3='eta']
@@ -51,7 +52,7 @@ model = RTBM(n_visible, n_hidden, init_max_param_bound=20, random_bound=1)
 
 # --- 5. Run the Evolutionary Minimizer ---
 print("Spawning CMA-ES evolutionary workers across all available CPU threads...")
-minimizer = CMA(parallel=True,ncores=6)
+minimizer = CMA(parallel=True,ncores=4)
 
 # Minimize the negative log-likelihood over the clean pion dataset
 solution = minimizer.train(logarithmic, model, X_train_theta, tolfun=1e-3,maxiter=MAXITER)

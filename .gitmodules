@@ -1,0 +1,4 @@
+[submodule "rtbm_workspace/theta"]
+	path = rtbm_workspace/theta
+	url = https://github.com/RiemannAI/theta.git
+	ignore = untracked
