@@ -38,3 +38,5 @@ if __name__ == "__main__":
   plot('pi_RH',OUTDIR,r'$\tau \to \pi\nu$ RH decays')
   plot('rho_LH',OUTDIR,r'$\tau \to \rho\nu \to \pi \pi^0 \nu$ LH decays')
   plot('rho_RH',OUTDIR,r'$\tau \to \rho\nu \to \pi \pi^0 \nu$ RH decays')
+  plot('pi',OUTDIR,r'$\tau \to \pi\nu$ Standard Model mixture')
+  plot('rho',OUTDIR,r'$\tau \to \rho\nu \to \pi \pi^0 \nu$ Standard Model mixture')
