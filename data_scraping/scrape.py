@@ -4,12 +4,12 @@ import numba as nb
 import os
 import time
 
-FOLDER = '/home/mike/Physics/physics_data'
-OUT_FOLDER = '../datasets'
+FOLDER = '/mnt/data/physics_data'
+OUT_FOLDER = os.path.join(os.path.dirname(__file__), '..', 'datasets')
 os.makedirs(OUT_FOLDER, exist_ok=True)
 
 #@nb.njit(parallel=True)
-def process_data(track_pt, track_eta, track_phi,
+def process_data(track_pt, track_eta, track_phi, track_mass,
                  photon_pt, photon_eta, photon_phi, 
                  tower_eem, tower_ehad,tower_eta, tower_phi):
     
@@ -39,6 +39,7 @@ def process_data(track_pt, track_eta, track_phi,
             t_pt = ev_track_pt[t]
             t_eta = track_eta[i][t]
             t_phi = track_phi[i][t]
+            t_mass = track_mass[i][t]
             
             if abs(t_eta) > 2.5:
                 continue
@@ -62,6 +63,9 @@ def process_data(track_pt, track_eta, track_phi,
             t_p = t_pt * np.cosh(t_eta)
             x_vis = t_p / 45.6
             
+            # Construct track P4 vector and calculate track energy
+            e_track = np.sqrt((t_p)**2 + t_mass**2)
+            
             total_ecal = 0.0
             total_hcal = 0.0
             
@@ -84,11 +88,12 @@ def process_data(track_pt, track_eta, track_phi,
                      
             e_cone = total_ecal + total_hcal
             had_fraction = (total_hcal / e_cone) if e_cone > 0.0 else 0.0
+            e_frac = (e_track / e_cone) if e_cone > 0.0 else 0.0
             
             # Save into the matrix
             slot = idx_counter
             output_matrix[slot, 0] = x_vis
-            output_matrix[slot, 1] = e_cone
+            output_matrix[slot, 1] = e_frac 
             output_matrix[slot, 2] = had_fraction
             output_matrix[slot, 3] = t_eta
             idx_counter += 1
@@ -112,6 +117,7 @@ def extract_dataset(root_path, save_name):
     track_pt  = tree["Track.PT"].array(library="np")
     track_eta = tree["Track.Eta"].array(library="np")
     track_phi = tree["Track.Phi"].array(library="np")
+    track_mass = tree["Track.Mass"].array(library="np")
     
     tower_eem  = tree["Tower.Eem"].array(library="np")
     tower_ehad = tree["Tower.Ehad"].array(library="np")
@@ -122,7 +128,7 @@ def extract_dataset(root_path, save_name):
     photon_eta = tree["Photon.Eta"].array(library="np")
     photon_phi = tree["Photon.Phi"].array(library="np")
     
-    raw_matrix = process_data(track_pt, track_eta, track_phi,
+    raw_matrix = process_data(track_pt, track_eta, track_phi, track_mass,
                               photon_pt, photon_eta, photon_phi,
                               tower_eem, tower_ehad, tower_eta, tower_phi)
     

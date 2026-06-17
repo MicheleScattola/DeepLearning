@@ -5,21 +5,12 @@ description = "Tau Polarization RTBM Study"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "hyperopt>=0.2.7",
     "matplotlib",
     "numba",
+    "numpy>=1.26.4",
+    "scikit-learn>=1.9.0",
+    "tensorflow>=2.21.0",
+    "setuptools<81",
     "uproot",
 ]
-
-[[tool.uv.index]]
-name = "pytorch-cu126"
-url = "https://download.pytorch.org/whl/cu126"
-explicit = true
-
-[tool.uv.workspace]
-members = [
-    "rbtm_workspace",
-]
-
-[tool.uv]
-index-strategy = "unsafe-best-match"
-prerelease = "allow"
