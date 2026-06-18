@@ -62,7 +62,7 @@ if __name__ == "__main__":
   scores_pi = calculate_anomaly_scores(model, validation_pions)
   scores_rho = calculate_anomaly_scores(model, rho_data)
 
-  # calculating best threshold and working point
+  # calculating threshold and working point
   threshold_95 = np.percentile(scores_pi, 95)
   
   bkg_rejected = np.sum(scores_rho > threshold_95)
@@ -112,7 +112,7 @@ if __name__ == "__main__":
   plt.close()
   print(f"[PLOT] Saved histogram to '{hist_outfile}'")
 
-  # Create a combined array of scores and true labels (0 for pi, 1 for rho)
+  # labels for roc (0 for pi, 1 for rho)
   y_true = np.concatenate([np.zeros(len(scores_pi)), np.ones(len(scores_rho))])
   y_scores = np.concatenate([scores_pi, scores_rho])
   
