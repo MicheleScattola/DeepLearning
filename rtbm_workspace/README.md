@@ -33,7 +33,7 @@ source .venv/bin/activate
 ./.venv/bin/pip install --upgrade pip
 
 # 4. Install legacy packages
-./.venv/bin/pip install "numpy>=1.16.0,<1.20.0" "cython<3.0.0" cma matplotlib wheel scipy
+./.venv/bin/pip install "numpy>=1.16.0,<1.20.0" "cython<3.0.0" cma matplotlib wheel scipy scikit-learn hyperopt
 
 # 5. Compile 
 ./.venv/bin/pip install --no-build-isolation -e ./theta

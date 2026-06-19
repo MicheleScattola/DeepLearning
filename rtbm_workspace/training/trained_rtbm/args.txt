@@ -1,10 +1,10 @@
 outfile: trained_rtbm
 n_hidden: 2
-maxiter: 5
+maxiter: 200
 tolfun: 1e-05
-ncores: 2
+ncores: 4
 param_bound: 20.0
-n_train: 500
+n_train: 8000
 optimize: False
 max_evals: 15
 save: False
