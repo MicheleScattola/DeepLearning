@@ -1,6 +1,7 @@
 from myFunctions import NegativeLogLikelihood,progress_monitor
 import os 
 import multiprocessing
+import threading
 import time
 import numpy as np
 import matplotlib.pyplot as plt
@@ -35,8 +36,8 @@ if __name__ == '__main__':
   pi_data, rho_data = load_datasets()
   np.random.shuffle(pi_data)
   split_index = int(0.05 * len(pi_data))
-  x_train = pi_data[:split_index].copy().T
-  x_val = pi_data[split_index:].copy().T
+  x_train = pi_data[:2000].copy().T
+  #x_val = pi_data[2000:].copy().T
 
   model = RTBM(visible_units=N_VISIBLE,
                 hidden_units=3,
@@ -55,6 +56,10 @@ if __name__ == '__main__':
   MAX_ITER = 100
   POP_SIZE = 30
   TOTAL_EVALS = MAX_ITER * POP_SIZE
+  monitor_thread = threading.Thread(target=progress_monitor, args=(shared_history, TOTAL_EVALS))
+  monitor_thread.daemon = True
+  monitor_thread.start()
+
   opt_params = minimizer.train(
                   cost=NegativeLogLikelihood(shared_history),
                   model=model,
