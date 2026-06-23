@@ -15,11 +15,13 @@ from cma import CMAEvolutionStrategy
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), 'theta')))
 from theta.rtbm import RTBM
 from theta.minimizer import worker_initialize, worker_compute
-from theta.costfunctions import logarithmic
+from theta.costfunctions import sum as log_nll_cost
 
 # ── constants ─────────────────────────────────────────────────────────────────
 ETA_MAX   = 2.5
 N_VISIBLE = 4
+PHYS_CORES = mp.cpu_count()
+PARALLEL_CORES = int(PHYS_CORES / 2)
 
 # ── argparse ──────────────────────────────────────────────────────────────────
 parser = argparse.ArgumentParser(prog='RTBMTraining',
@@ -28,9 +30,9 @@ parser.add_argument('-o',  '--outfile',     default='trained_rtbm')
 parser.add_argument('-nh', '--n_hidden',    type=int,   default=2)
 parser.add_argument('--maxiter',            type=int,   default=200)
 parser.add_argument('--tolfun',             type=float, default=1e-5)
-parser.add_argument('--ncores',             type=int,   default=4)
-parser.add_argument('--param_bound',        type=float, default=20.0)
-parser.add_argument('--n_train',            type=int,   default=8000,
+parser.add_argument('--ncores',             type=int,   default=PARALLEL_CORES)
+parser.add_argument('--param_bound',        type=float, default=5.0)
+parser.add_argument('--n_train',            type=int,   default=20000,
                     help='Number of pi events used for CMA-ES training (80/20 train/val split)')
 parser.add_argument('--optimize',           action='store_true',
                     help='Run Bayesian hyperparameter search before final training')
@@ -53,11 +55,13 @@ np.random.seed(42)
 def load_datasets():
     pi  = np.load('../datasets/pi.npy')
     rho = np.load('../datasets/rho.npy')
-    # same preprocessing as autoencoder_workspace
     pi[:,  1] = np.clip(pi[:,  1], 0.0, 1.0)
     rho[:, 1] = np.clip(rho[:, 1], 0.0, 1.0)
     pi[:,  3] = (pi[:,  3] - ETA_MAX) / 5.0
     rho[:, 3] = (rho[:, 3] - ETA_MAX) / 5.0
+    eps = 1e-4
+    for arr in (pi, rho):
+        arr[:, 0] = np.log(np.clip(arr[:, 0], eps, 1-eps) / (1 - np.clip(arr[:, 0], eps, 1-eps)))
     return pi, rho
 
 
@@ -69,46 +73,40 @@ def standardize(train, *others):
 
 
 # ── training with history capture ─────────────────────────────────────────────
-def train_rtbm(model, x_theta, ncores=4, maxiter=200, tolfun=1e-5):
+def train_rtbm(model, x_theta, ncores=PARALLEL_CORES, maxiter=200, tolfun=1e-5):
     """CMA-ES training that returns (solution, per-iteration best-cost list)."""
     initsol  = np.real(model.get_parameters())
     sigma    = np.max(model.get_bounds()[1]) * 0.1
     cma_opts = {
-        'bounds':   model.get_bounds(),
-        'tolfun':   tolfun,
-        'maxiter':  maxiter,
-        'verb_log': 0,
+        'bounds':           model.get_bounds(),
+        'tolfun':           0,        # disabled: with NAN_PENALTY all-equal populations trigger this
+        'maxiter':          maxiter,
+        'verb_log':         0,
+        'tolflatfitness':   maxiter,  # convergence criterion: stop when best NLL stagnates
     }
     es      = CMAEvolutionStrategy(initsol, sigma, cma_opts)
     history = []
 
+    NAN_PENALTY = 1e9   # finite stand-in for constraint-violating candidates
+
     if ncores > 1:
         with closing(mp.Pool(ncores, initializer=worker_initialize,
-                             initargs=(logarithmic, model, x_theta, None))) as pool:
+                             initargs=(log_nll_cost, model, x_theta, None))) as pool:
             while not es.stop():
-                solutions, f_values = [], []
-                while len(solutions) < es.popsize:
-                    candidates = es.ask(es.popsize - len(solutions))
-                    fits = pool.map_async(worker_compute, candidates).get()
-                    for v, s in zip(fits, candidates):
-                        if not np.isnan(v):
-                            solutions.append(s)
-                            f_values.append(v)
-                es.tell(solutions, f_values)
+                candidates = es.ask()
+                fits = pool.map(worker_compute, candidates)
+                f_values = [v if np.isfinite(v) else NAN_PENALTY for v in fits]
+                es.tell(candidates, f_values)
                 es.disp()
                 history.append(es.best.f)
             pool.terminate()
     else:
-        worker_initialize(logarithmic, model, x_theta, None)
+        worker_initialize(log_nll_cost, model, x_theta, None)
         while not es.stop():
-            solutions, f_values = [], []
-            while len(solutions) < es.popsize:
-                s = es.ask(1)[0]
-                v = worker_compute(s)
-                if not np.isnan(v):
-                    solutions.append(s)
-                    f_values.append(v)
-            es.tell(solutions, f_values)
+            candidates = es.ask()
+            f_values = [worker_compute(s) for s in candidates]
+            f_values = [v if np.isfinite(v) else NAN_PENALTY for v in f_values]
+            es.tell(candidates, f_values)
             es.disp()
             history.append(es.best.f)
 
@@ -118,15 +116,21 @@ def train_rtbm(model, x_theta, ncores=4, maxiter=200, tolfun=1e-5):
 
 # ── evaluation helpers ─────────────────────────────────────────────────────────
 def anomaly_scores(model, x_theta):
-    probs = np.real(model(x_theta)).flatten()
-    probs = np.where(np.isfinite(probs) & (probs > 0), probs, 1e-300)
-    return -np.log(probs)
+    try:
+        log_probs = np.real(model(x_theta)).flatten()
+        log_probs = np.where(np.isfinite(log_probs), log_probs, -1e6)
+        return -log_probs
+    except np.linalg.LinAlgError:
+        return np.full(x_theta.shape[1], 1e6)
 
 
 def mean_nll(model, x_theta):
-    scores = anomaly_scores(model, x_theta)
-    finite = scores[np.isfinite(scores)]
-    return float(np.mean(finite)) if len(finite) > 0 else 1e9
+    try:
+        log_probs = np.real(model(x_theta)).flatten()
+        finite = log_probs[np.isfinite(log_probs)]
+        return float(-np.mean(finite)) if len(finite) > 0 else 1e9
+    except np.linalg.LinAlgError:
+        return 1e9
 
 
 # ── hyperopt ──────────────────────────────────────────────────────────────────
@@ -134,8 +138,8 @@ SEARCH_MAXITER = 80   # fast per-trial iterations during search
 SEARCH_TOLFUN  = 1e-4
 
 search_space = {
-    'n_hidden':    hp.choice('n_hidden',    [1, 2, 3]),
-    'param_bound': hp.loguniform('param_bound', np.log(5.0), np.log(50.0)),
+    'n_hidden':    hp.choice('n_hidden',    [1,2,3]),
+    'param_bound': hp.loguniform('param_bound', np.log(1.0), np.log(15.0)),
 }
 
 
@@ -143,7 +147,8 @@ def make_objective(X_tr, X_val, ncores):
     def objective(params):
         nh = int(params['n_hidden'])
         pb = float(params['param_bound'])
-        m  = RTBM(N_VISIBLE, nh, init_max_param_bound=pb, random_bound=1)
+        m  = RTBM(N_VISIBLE, nh, init_max_param_bound=pb, random_bound=2,
+                  diagonal_T=True, mode=RTBM.Mode.LogProbability)
         try:
             train_rtbm(m, X_tr, ncores=ncores, maxiter=SEARCH_MAXITER, tolfun=SEARCH_TOLFUN)
             loss = mean_nll(m, X_val)
@@ -177,8 +182,13 @@ def plot_density_check(model, X_val_theta, val_raw):
     Shows per-feature histograms of validation data overlaid with the P(x)-weighted
     histogram, so the learned density can be compared to the true distribution.
     """
-    probs = np.real(model(X_val_theta)).flatten()
-    probs = np.clip(probs, 0.0, None)
+    # model is in LogProbability mode; use log-sum-exp for numerically stable weights
+    try:
+        log_probs = np.real(model(X_val_theta)).flatten()
+    except np.linalg.LinAlgError:
+        log_probs = np.zeros(X_val_theta.shape[1])
+    log_probs -= log_probs.max()
+    probs = np.exp(log_probs)
     w     = probs / probs.sum() if probs.sum() > 0 else np.ones(len(probs)) / len(probs)
 
     labels = [r'$x_{vis}$', r'$Iso = \Sigma E_{ph}/E_{track}$',
@@ -335,7 +345,8 @@ if __name__ == '__main__':
     # ── final training ─────────────────────────────────────────────────────────
     print(f"\n[TRAIN] RTBM({N_VISIBLE}, {n_hidden}), param_bound={param_bound:.1f}, "
           f"maxiter={args.maxiter}, tolfun={args.tolfun}")
-    model = RTBM(N_VISIBLE, n_hidden, init_max_param_bound=param_bound, random_bound=1)
+    model = RTBM(N_VISIBLE, n_hidden, init_max_param_bound=param_bound, random_bound=2,
+                 diagonal_T=True, mode=RTBM.Mode.LogProbability)
 
     _, history = train_rtbm(model, X_tr, ncores=ncores,
                              maxiter=args.maxiter, tolfun=args.tolfun)

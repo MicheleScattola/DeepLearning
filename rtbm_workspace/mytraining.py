@@ -25,6 +25,9 @@ def load_datasets():
     rho[:, 1] = np.clip(rho[:, 1], 0.0, 1.0)
     pi[:,  3] = (pi[:,  3] - ETA_MAX) / 5.0
     rho[:, 3] = (rho[:, 3] - ETA_MAX) / 5.0
+    eps = 1e-4
+    for arr in (pi, rho):
+        arr[:, 0] = np.log(np.clip(arr[:, 0], eps, 1-eps) / (1 - np.clip(arr[:, 0], eps, 1-eps)))
     return pi, rho
 
 #def train_rtbm(model,x_train,x_val,y_train,y_val):
@@ -43,8 +46,8 @@ if __name__ == '__main__':
                 hidden_units=3,
                 mode=RTBM.Mode.LogProbability,
                 diagonal_T=True,
-                init_max_param_bound=20.0,
-                random_bound=0.5
+                init_max_param_bound=10.0,
+                random_bound=2.0
                 )
 
   minimizer = theta.minimizer.CMA(parallel=True,
@@ -65,7 +68,7 @@ if __name__ == '__main__':
                   model=model,
                   x_data=x_train,
                   y_data=None,
-                  maxiter=150)
+                  maxiter=MAX_ITER)
 
   print("\n[SUCCESS] Optimal parameters saved to 'best_pion_rtbm_params.npy'")
     

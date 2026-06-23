@@ -3,8 +3,8 @@ n_hidden: 2
 maxiter: 200
 tolfun: 1e-05
 ncores: 4
-param_bound: 20.0
-n_train: 8000
-optimize: False
+param_bound: 5.0
+n_train: 20000
+optimize: True
 max_evals: 15
-save: False
+save: True
