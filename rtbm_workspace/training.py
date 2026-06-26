@@ -2,6 +2,7 @@ import os
 import sys
 import argparse
 import pickle
+import time
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
@@ -72,6 +73,39 @@ def standardize(train, *others):
     return (train - mu) / std, [(x - mu) / std for x in others], (mu, std)
 
 
+def make_rtbm(nv, nh, param_bound):
+    """Create RTBM with full (non-diagonal) T and W=0 at initialisation.
+
+    diagonal_T=True was a numerical workaround that permanently constrains T
+    to be diagonal, preventing the Gaussian envelope from capturing feature
+    correlations (e.g. f_had vs Iso, both probing the same missing pi0).
+    Instead, we use diagonal_T=False and zero W after random_init: this gives
+    theta ratio = 1 at init (same as diagonal_T=True) without the architectural
+    restriction.
+
+    random_bound scales as sqrt(param_bound) so E[T_ii]/sigma stays ~3.3,
+    keeping the Schur complement Q - W^T T^{-1} W positive after the first
+    CMA perturbation.
+    """
+    random_bound = max(2.0, param_bound ** 0.5)
+    sigma = param_bound * 0.1
+    for _ in range(200):
+        m = RTBM(nv, nh, init_max_param_bound=param_bound, random_bound=random_bound,
+                 diagonal_T=False, mode=RTBM.Mode.LogProbability)
+        if np.all(np.diag(m.t) > sigma) and np.all(np.diag(m.q) > sigma):
+            params = np.real(m.get_parameters()).copy()
+            params[nv + nh : nv + nh + nv * nh] = 0.0
+            if m.set_parameters(params):
+                # Widen CMA bounds to contain the actual initial T entries.
+                # With diagonal_T=False, T diagonal entries are sums of squares
+                # (≈2*random_bound²) and can exceed param_bound. sigma stays at
+                # param_bound*0.1 for conservative initial exploration.
+                actual_max = float(np.max(np.abs(params)))
+                m.set_bounds(max(param_bound, actual_max) * 1.2)
+                return m
+    return m
+
+
 # ── training with history capture ─────────────────────────────────────────────
 def train_rtbm(model, x_theta, ncores=PARALLEL_CORES, maxiter=200, tolfun=1e-5):
     """CMA-ES training that returns (solution, per-iteration best-cost list)."""
@@ -134,12 +168,12 @@ def mean_nll(model, x_theta):
 
 
 # ── hyperopt ──────────────────────────────────────────────────────────────────
-SEARCH_MAXITER = 80   # fast per-trial iterations during search
+SEARCH_MAXITER = 150   # fast per-trial iterations during search
 SEARCH_TOLFUN  = 1e-4
 
 search_space = {
-    'n_hidden':    hp.choice('n_hidden',    [1,2,3]),
-    'param_bound': hp.loguniform('param_bound', np.log(1.0), np.log(15.0)),
+    'n_hidden':    hp.choice('n_hidden',    [2,3,4]),
+    'param_bound': hp.loguniform('param_bound', np.log(1.0), np.log(8.0)),
 }
 
 
@@ -147,8 +181,7 @@ def make_objective(X_tr, X_val, ncores):
     def objective(params):
         nh = int(params['n_hidden'])
         pb = float(params['param_bound'])
-        m  = RTBM(N_VISIBLE, nh, init_max_param_bound=pb, random_bound=2,
-                  diagonal_T=True, mode=RTBM.Mode.LogProbability)
+        m = make_rtbm(N_VISIBLE, nh, pb)
         try:
             train_rtbm(m, X_tr, ncores=ncores, maxiter=SEARCH_MAXITER, tolfun=SEARCH_TOLFUN)
             loss = mean_nll(m, X_val)
@@ -293,6 +326,7 @@ def plot_roc(scores_pi, scores_rho):
 
 # ── main ───────────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
+    start = time.time()
     print("[INFO] Loading datasets...")
     pi_data, rho_data = load_datasets()
     np.random.shuffle(pi_data)
@@ -345,8 +379,7 @@ if __name__ == '__main__':
     # ── final training ─────────────────────────────────────────────────────────
     print(f"\n[TRAIN] RTBM({N_VISIBLE}, {n_hidden}), param_bound={param_bound:.1f}, "
           f"maxiter={args.maxiter}, tolfun={args.tolfun}")
-    model = RTBM(N_VISIBLE, n_hidden, init_max_param_bound=param_bound, random_bound=2,
-                 diagonal_T=True, mode=RTBM.Mode.LogProbability)
+    model = make_rtbm(N_VISIBLE, n_hidden, param_bound)
 
     _, history = train_rtbm(model, X_tr, ncores=ncores,
                              maxiter=args.maxiter, tolfun=args.tolfun)
@@ -377,3 +410,5 @@ if __name__ == '__main__':
 
     plot_anomaly_scores(sc_pi, sc_rho)
     plot_roc(sc_pi, sc_rho)
+
+    print(f'Tot time: {time.time()-start:.2f}')

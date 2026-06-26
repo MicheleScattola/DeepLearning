@@ -1,4 +1,4 @@
-outfile: trained_rtbm
+outfile: test2
 n_hidden: 2
 maxiter: 200
 tolfun: 1e-05

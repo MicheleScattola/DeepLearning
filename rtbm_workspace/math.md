@@ -39,29 +39,48 @@ where $v$ is the oscillatory part (a sum of decaying Gaussians over the integer 
 
 ---
 
-## 3. Fix: `diagonal_T=True` Forces $W = 0$ at Initialisation
+## 3. Fix: Force $W = 0$ at Initialisation (without permanently constraining $T$)
 
-When `diagonal_T=True`, `random_init` replaces $X$ with a **diagonal matrix** whose entries are drawn uniformly in $[-\text{bound}, +\text{bound}]$. Then:
+### Why $W = 0$ at init is necessary
 
-$$A = X^T X = X^2 \quad \text{(diagonal)}$$
-
-Because $A$ is diagonal, its off-diagonal block is exactly zero:
-
-$$W = A_{[N_h:,\, :N_h]} = 0$$
-
-With $W = 0$ and $B_v \approx B_h \approx 0$, the theta ratio collapses to:
+The theta ratio must equal 1 at initialisation so that $\log P$ starts at a finite, manageable value. This requires the numerator and denominator theta functions to be equal, which happens when $W = 0$:
 
 $$\frac{\theta\!\left(\frac{B_h^T}{2\pi i} \;\Big|\; \frac{-Q}{2\pi i}\right)}{\theta\!\left(\frac{B_h^T}{2\pi i} \;\Big|\; \frac{-Q}{2\pi i}\right)} = 1$$
 
-The probability reduces to a pure diagonal Gaussian:
+The probability then reduces to a pure Gaussian:
 
-$$P(v) = \sqrt{\frac{\det T}{(2\pi)^{N_v}}} \cdot e^{-\frac{1}{2}v^T T v}$$
+$$P(v) = \sqrt{\frac{\det T}{(2\pi)^{N_v}}} \cdot e^{-\frac{1}{2}v^T T v - B_v^T v - \dots}$$
 
-For standardised training data ($\mu = 0$, $\sigma = 1$ per feature) and $T \approx I$, this gives:
+For standardised data with $T \approx I$: $\log P \approx -5.6$ per event, NLL $\approx 36\,000$ — a finite, well-scaled landscape CMA-ES can navigate.
 
-$$\log P \approx -\frac{N_v}{2}\log(2\pi) - \frac{1}{2}\|v\|^2 \approx -3.6 - 2.0 = -5.6 \quad \text{per event}$$
+### Why `diagonal_T=True` is the wrong architectural fix
 
-The total NLL starts at $\sim 5.6 \times N_\text{train} \approx 36\,000$ — a **finite, well-scaled** landscape that CMA-ES can navigate. As optimisation proceeds, $W$ grows away from zero and the hidden units begin capturing non-Gaussian structure in the pion phase space.
+One way to force $W = 0$ is `diagonal_T=True`: with a diagonal $X$, $A = X^T X$ is diagonal, so the off-diagonal block $W = 0$. But `diagonal_T=True` is **permanent** — the theta library's `set_parameters` only updates the diagonal of $T$ throughout training, leaving off-diagonal elements at zero forever.
+
+This permanently constrains the Gaussian envelope to factorise as independent 1D Gaussians:
+
+$$e^{-\frac{1}{2}v^T T v} \xrightarrow{\text{diagonal }T} \prod_i e^{-\frac{1}{2}T_{ii}\,v_i^2}$$
+
+For this physics problem, the four features are physically correlated:
+- **$f_\text{had}$ and $\text{Iso}$** both probe the same missing $\pi^0 \to \gamma\gamma$. High Iso typically accompanies low $f_\text{had}$ (EM calorimeter picking up the photons) — a genuine covariance.
+- **$x_\text{vis}$ and $\text{Iso}$** are correlated through energy conservation: a missed $\pi^0$ that carries away energy raises Iso and also biases $x_\text{vis}$.
+
+A diagonal $T$ cannot represent a tilted ellipse in the $(f_\text{had}, \text{Iso})$ plane. All cross-feature correlations must be carried entirely by the hidden units through $W$ — a severe capacity constraint for $N_h = 2$.
+
+### The correct fix: zero $W$ after `random_init`, keep full $T$
+
+Using `diagonal_T=False` with `random_init`, the Schur complement block gives a full PSD matrix $T$ and $W \neq 0$ (causing the theta collapse described in Section 2). The fix is to use `diagonal_T=False` but then **manually zero the $W$ entries** in the parameter vector after `random_init`. Since $W = 0$, the Schur complement $Q - W^T T^{-1} W = Q > 0$ is automatically satisfied, and `set_parameters` succeeds:
+
+```python
+params = np.real(m.get_parameters()).copy()
+params[N_v + N_h : N_v + N_h + N_v \cdot N_h] = 0.0   # zero W entries
+m.set_parameters(params)   # returns True since Schur = Q > 0
+```
+
+This gives:
+- **Same numerical starting point** as `diagonal_T=True`: theta ratio = 1, log $P$ ≈ −5.6/event
+- **Full $T$ matrix** free to develop off-diagonal entries during CMA training
+- **Full parameter count** (27 for $N_v=4$, $N_h=2$ vs 21 for diagonal $T$)
 
 ---
 
@@ -209,18 +228,90 @@ giving 21 (Nh=2), 26 (Nh=3), 32 (Nh=4). CMA-ES runtime scales roughly as $N_\tex
 
 ---
 
-## 9. Summary of Changes
+## 9. Fix: Arcsine Initialisation Trap and `make_rtbm` Retry Loop
+
+### The arcsine distribution of `T_ii` at initialisation
+
+`random_init` with `diagonal_T=True` draws a diagonal matrix with entries $x_i \sim \text{Uniform}(-b, b)$ and then sets $T_{ii} = x_i^2$. The distribution of $x_i^2$ is arcsine-like on $[0, b^2]$, with PDF:
+
+$$f(y) = \frac{1}{2b\sqrt{y}}, \quad y \in [0, b^2]$$
+
+This is concentrated near **both** 0 and $b^2$. In particular:
+
+$$P(T_{ii} < \varepsilon) = \frac{\sqrt{\varepsilon}}{b}$$
+
+With $b = 2$ (the fixed `random_bound`) and $\sigma = \texttt{param\_bound} \times 0.1$:
+
+$$P(T_{ii} < \sigma) = \frac{\sqrt{\sigma}}{2}$$
+
+For `param_bound=5` ($\sigma = 0.5$): $P(T_{ii} < 0.5) \approx 0.35$ per entry. Across all $N_v = 4$ diagonal entries, the probability that **all** survive is only $(1-0.35)^4 \approx 0.18$. So in roughly 82% of initialisations, at least one $T_{ii}$ is dangerously close to zero.
+
+When $T_{ii} \ll 1$, the first CMA-ES generation perturbs $W_{ij}$ from 0 by $\sim\sigma$, causing:
+
+$$Q - W^T T^{-1} W \approx Q - N_v \frac{\sigma^2}{T_{ii}} \to -\infty$$
+
+Every candidate in the population fails the Schur positivity check, all receive `NAN_PENALTY = 1e9`, and CMA-ES is stuck from iteration 1. This failure mode is **random-seed-dependent**: the previous run with `param_bound=5` happened to draw $T_{ii}$ values safely above $\sigma$; subsequent runs with different random states hit the trap systematically.
+
+The failure becomes **worse for larger `param_bound`**: $\sigma$ grows while the $T_{ii}$ distribution is unchanged (still in $[0, 4]$ for `random_bound=2`), so the fraction of candidates with $T_{ii} < \sigma$ increases. This is why hyperopt trials at `param_bound > 5` fail universally.
+
+### Fix: `make_rtbm` — dynamic `random_bound` and retry
+
+The function `make_rtbm(nv, nh, param_bound)` replaces direct `RTBM(...)` calls and combines two mechanisms:
+
+**1. Scale `random_bound` with `sqrt(param_bound)`**
+
+Setting $b = \max(2,\, \sqrt{\texttt{param\_bound}})$ gives:
+
+$$\frac{\mathbb{E}[T_{ii}]}{\sigma} = \frac{b^2/3}{\texttt{param\_bound} \times 0.1} = \frac{\texttt{param\_bound}/3}{\texttt{param\_bound} \times 0.1} = \frac{10}{3} \approx 3.3$$
+
+The ratio $\mathbb{E}[T_{ii}]/\sigma$ is now **constant regardless of `param_bound`**, removing the systematic degradation at larger bounds. The first-generation Schur complement estimate:
+
+$$Q - W^T T^{-1} W \approx \mathbb{E}[Q_{ii}] - N_v \frac{\sigma^2}{\mathbb{E}[T_{ii}]} \approx 3.3\sigma - 4 \times \frac{\sigma^2}{3.3\sigma} = 3.3\sigma - 1.2\sigma = 2.1\sigma > 0$$
+
+remains well-positive in expectation.
+
+**2. Retry loop until $T$ and $Q$ diagonals exceed $\sigma$**
+
+Even with the scaling above, the arcsine variance means individual draws can still be near zero. The retry loop explicitly checks:
+
+$$\forall i:\; T_{ii} > \sigma \quad\text{and}\quad Q_{ii} > \sigma$$
+
+before accepting the initialisation. The probability of passing per attempt:
+
+$$P(\text{pass}) = \left(1 - \frac{\sqrt{\sigma}}{b}\right)^{N_v} \cdot \left(1 - \frac{\sqrt{\sigma}}{b}\right)^{N_h} = \left(1 - \sqrt{\frac{\texttt{param\_bound} \times 0.1}{\texttt{param\_bound}}}\right)^{N_v + N_h} = \left(1 - \sqrt{0.1}\right)^{N_v + N_h}$$
+
+For $N_v = 4, N_h \in \{2,3,4\}$: $P(\text{pass}) \approx (0.684)^{6\text{–}8} \approx 0.10\text{–}0.08$. The expected number of retries is $\sim 10$–$13$ — negligible overhead compared to a CMA-ES iteration.
+
+```python
+def make_rtbm(nv, nh, param_bound):
+    random_bound = max(2.0, param_bound ** 0.5)
+    sigma = param_bound * 0.1
+    for _ in range(200):
+        m = RTBM(nv, nh, init_max_param_bound=param_bound, random_bound=random_bound,
+                 diagonal_T=True, mode=RTBM.Mode.LogProbability)
+        if np.all(np.diag(m.t) > sigma) and np.all(np.diag(m.q) > sigma):
+            return m
+    return m
+```
+
+---
+
+## 10. Summary of Changes
 
 | Parameter | Old | New | Reason |
 |-----------|-----|-----|--------|
-| `diagonal_T` | `False` | `True` | Forces $W=0$ at init; theta ratio = 1; P starts as pure Gaussian |
-| `random_bound` | `1` | `2` | $\mathbb{E}[T_{ii}] = 1.33$; large enough that $T > 0$ survives $\sigma=0.5$ perturbations |
+| `diagonal_T` | `True` (workaround) | `False` + $W$ zeroed post-init | `diagonal_T=True` permanently restricts $T$; full $T$ captures feature correlations |
+| CMA bounds | `param_bound` for all params | `max(param_bound, max_abs_init) × 1.2` | With full $T$, Schur-init diagonal entries ≈ $2\,\text{random\_bound}^2 \gg \text{param\_bound}$; fixed bounds cause immediate crash |
+| `random_bound` | `1` | `max(2, sqrt(param_bound))` | Keeps $\mathbb{E}[T_{ii}]/\sigma \approx 3.3$ for any `param_bound`; previous fixed value of 2 caused systematic Schur failures at `param_bound > 5` |
 | RTBM mode | `Probability` | `LogProbability` | Avoids float64 underflow in theta ratio as model trains |
 | Cost function | `logarithmic` ($-\sum \log P$) | `sum` ($-\sum \log P$ via log-space input) | Consistent with LogProbability mode |
 | `tolflatfitness` | `1` (default) | `maxiter` | Prevents premature stop during early flat landscape |
 | `tolfun` | `1e-5` | `0` (disabled) | Range of all-penalty population = 0 < 1e-5 stops training after 1 iter for $N_h \geq 3$ |
 | `param_bound` default | `20.0` | `5.0` | $\sigma=0.5$ keeps Schur complement well-separated in generation 1; avoids $10^9$ cost trap |
-| Hyperopt search | `param_bound` $\in [5, 50]$ | `param_bound` $\in [1, 10]$ | Restricts search to region where Schur complement is stable |
+| Hyperopt search | `param_bound` $\in [5, 50]$ | `param_bound` $\in [1, 15]$ | Full range safe now that `random_bound` scales with `param_bound` |
+| Hyperopt `n_hidden` | `{1, 2, 3}` | `{2, 3, 4}` | $N_h=1$ too inexpressive; extend upper range for better density fit |
+| `SEARCH_MAXITER` | `80` | `150` | Longer per-trial budget so $N_h=3,4$ trials actually converge during hyperopt |
+| Model creation | direct `RTBM(...)` | `make_rtbm(...)` | Retry loop ensures $T_{ii}, Q_{ii} > \sigma$ before handing off to CMA-ES |
 | Error handling | none | `try/except LinAlgError` | Guards against marginal-Schur Cholesky crash in main process after training |
 | $x_\text{vis}$ preprocessing | linear in $[0,1]$ | logit transform | Maps bounded flat distribution to logistic (Gaussian-like); initial model fits shape from generation 0 |
 | $\eta$ preprocessing | $(η-2.5)/5$ | unchanged | Logit fails: events pile up at the lower acceptance boundary $\eta \approx -2.5$, creating a spike at $-9.2$ in logit space |

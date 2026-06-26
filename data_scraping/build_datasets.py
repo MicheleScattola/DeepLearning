@@ -1,6 +1,6 @@
 import numpy as np
 
-# Set random seed for perfect scientific reproducibility
+# Set random seed for perfect reproducibility
 np.random.seed(42)
 
 # Target Standard Model polarization parameters
