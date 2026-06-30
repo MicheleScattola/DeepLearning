@@ -1,10 +1,10 @@
-outfile: test2
+outfile: optimized_run
 n_hidden: 2
-maxiter: 200
+maxiter: 300
 tolfun: 1e-05
 ncores: 8
 param_bound: 5.0
-n_train: 20000
+n_train: 8000
 optimize: True
-max_evals: 20
+max_evals: 15
 save: True

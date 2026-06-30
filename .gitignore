@@ -11,3 +11,4 @@ wheels/
 
 # Data generation
 *.root
+rtbm_workspace/sweep_runs/*

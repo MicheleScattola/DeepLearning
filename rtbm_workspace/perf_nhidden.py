@@ -2,23 +2,29 @@ import os
 import sys
 import argparse
 import pickle
+import time
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from sklearn.metrics import roc_curve, auc
 from hyperopt import fmin, tpe, hp, STATUS_OK, Trials, space_eval
 import multiprocessing as mp
+from contextlib import closing
+from cma import CMAEvolutionStrategy
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), 'theta')))
+from theta.rtbm import RTBM
+from theta.minimizer import worker_initialize, worker_compute
+from theta.costfunctions import sum as log_nll_cost
 
-from rtbmlib import (
-    ETA_MAX, N_VISIBLE, PARALLEL_CORES,
-    load_datasets, standardize, train_val_test_split,
-    make_rtbm, train_rtbm, mean_nll, anomaly_scores,
-    compute_auc, background_rejection,
-)
+# constants
+ETA_MAX   = 2.5
+N_VISIBLE = 4
+PHYS_CORES = mp.cpu_count()
+PARALLEL_CORES = int(PHYS_CORES / 2)
 
-# ── argparse ──────────────────────────────────────────────────────────────────
+# argparse
 parser = argparse.ArgumentParser(prog='RTBMTraining',
                                  description='RTBM training and hyperparameter search')
 parser.add_argument('-o',  '--outfile',     default='trained_rtbm')
@@ -27,7 +33,7 @@ parser.add_argument('--maxiter',            type=int,   default=200)
 parser.add_argument('--tolfun',             type=float, default=1e-5)
 parser.add_argument('--ncores',             type=int,   default=PARALLEL_CORES)
 parser.add_argument('--param_bound',        type=float, default=5.0)
-parser.add_argument('--n_train',            type=int,   default=8000,
+parser.add_argument('--n_train',            type=int,   default=20000,
                     help='Number of pi events used for CMA-ES training (80/20 train/val split)')
 parser.add_argument('--optimize',           action='store_true',
                     help='Run Bayesian hyperparameter search before final training')
@@ -46,13 +52,122 @@ with open(os.path.join(OUTDIR, 'args.txt'), 'w') as _f:
 np.random.seed(42)
 
 
+# load data and standardization
+def load_datasets():
+    pi  = np.load('../datasets/pi.npy')
+    pi[:,  1] = np.clip(pi[:,  1], 0.0, 1.0)
+    pi[:,  3] = (pi[:,  3] + ETA_MAX) / 5.0
+    return pi
+
+
+def standardize(train, *others):
+    '''Standardize training and validation datasets *on training data*.
+    Returns (data - mean) / stddev .
+    '''
+    mu  = train.mean(axis=0)
+    std = train.std(axis=0)
+    std[std == 0] = 1.0
+    return (train - mu) / std, [(x - mu) / std for x in others], (mu, std)
+
+
+def make_rtbm(nv, nh, param_bound):
+    '''Create RTBM with full (non-diagonal) T and W=0 at initialisation.
+    
+    this gives theta ratio = 1 at init (same as diagonal_T=True)
+    without the architectural
+    restriction.
+
+    random_bound scales as sqrt(param_bound) so < T_ii >/sigma stays ~3.3,
+    keeping the Schur complement Q - W^T T^{-1} W positive after the first
+    CMA perturbation.
+    '''
+    random_bound = max(2.0, param_bound ** 0.5)
+    sigma = param_bound * 0.1
+    for test_iteration in range(50): # try 50 times
+        m = RTBM(nv, nh, init_max_param_bound=param_bound, random_bound=random_bound,
+                 diagonal_T=False, mode=RTBM.Mode.LogProbability)
+        if np.all(np.diag(m.t) > sigma) and np.all(np.diag(m.q) > sigma):
+            params = np.real(m.get_parameters()).copy()
+            params[nv + nh : nv + nh + nv * nh] = 0.0
+            if m.set_parameters(params):
+                # Widen CMA bounds to contain the actual initial T entries.
+                # With diagonal_T=False, T diagonal entries are sums of squares
+                # (≈2*random_bound²) and can exceed param_bound. sigma stays at
+                # param_bound*0.1 for conservative initial exploration.
+                actual_max = float(np.max(np.abs(params)))
+                m.set_bounds(max(param_bound, actual_max) * 1.2)
+                return m
+    return m
+
+
+# ── training with history capture ─────────────────────────────────────────────
+def train_rtbm(model, x_theta, ncores=PARALLEL_CORES, maxiter=200, tolfun=0.0):
+    '''CMA-ES training that returns (solution, per-iteration best-cost list).'''
+    initsol = np.real(model.get_parameters())
+    sigma = np.max(model.get_bounds()[1]) * 0.1
+    cma_opts = {
+        'bounds': model.get_bounds(),
+        'tolfun': tolfun, # disabled by default (checks 0>0 := False). With NAN_PENALTY all-equal populations trigger this
+        'maxiter': maxiter,
+        'verb_log': 0,
+        'tolflatfitness': maxiter, # convergence criterion: stop when best NLL stagnates
+    }
+    es      = CMAEvolutionStrategy(initsol, sigma, cma_opts)
+    history = []
+
+    NAN_PENALTY = 1e9   # finite stand-in for constraint-violating candidates
+
+    if ncores > 1:
+        with closing(mp.Pool(ncores, initializer=worker_initialize,
+                             initargs=(log_nll_cost, model, x_theta, None))) as pool:
+            while not es.stop():
+                candidates = es.ask()
+                fits = pool.map(worker_compute, candidates)
+                f_values = [v if np.isfinite(v) else NAN_PENALTY for v in fits]
+                es.tell(candidates, f_values)
+                es.disp()
+                history.append(es.best.f)
+            pool.terminate()
+    else:
+        worker_initialize(log_nll_cost, model, x_theta, None)
+        while not es.stop():
+            candidates = es.ask()
+            f_values = [worker_compute(s) for s in candidates]
+            f_values = [v if np.isfinite(v) else NAN_PENALTY for v in f_values]
+            es.tell(candidates, f_values)
+            es.disp()
+            history.append(es.best.f)
+
+    model.set_parameters(es.result[0])
+    return es.result[0], history
+
+
+# ── evaluation helpers ─────────────────────────────────────────────────────────
+def anomaly_scores(model, x_theta):
+    try:
+        log_probs = np.real(model(x_theta)).flatten()
+        log_probs = np.where(np.isfinite(log_probs), log_probs, -1e6)
+        return -log_probs
+    except np.linalg.LinAlgError:
+        return np.full(x_theta.shape[1], 1e6)
+
+
+def mean_nll(model, x_theta):
+    try:
+        log_probs = np.real(model(x_theta)).flatten()
+        finite = log_probs[np.isfinite(log_probs)]
+        return float(-np.mean(finite)) if len(finite) > 0 else 1e9
+    except np.linalg.LinAlgError:
+        return 1e9
+
+
 # ── hyperopt ──────────────────────────────────────────────────────────────────
-SEARCH_MAXITER = 150   # fast per-trial iterations during search
+SEARCH_MAXITER = 100   # fast per-trial iterations during search
 SEARCH_TOLFUN  = 1e-4
 
 search_space = {
-    'n_hidden':    hp.choice('n_hidden',    [2, 3, 4]),
-    'param_bound': hp.loguniform('param_bound', np.log(1.0), np.log(8.0)),
+    'n_hidden':    hp.choice('n_hidden',    [2,3,4,5]),
+    'param_bound': hp.loguniform('param_bound', np.log(1.0), np.log(15.0)),
 }
 
 
@@ -60,7 +175,7 @@ def make_objective(X_tr, X_val, ncores):
     def objective(params):
         nh = int(params['n_hidden'])
         pb = float(params['param_bound'])
-        m  = make_rtbm(N_VISIBLE, nh, pb)
+        m = make_rtbm(N_VISIBLE, nh, pb)
         try:
             train_rtbm(m, X_tr, ncores=ncores, maxiter=SEARCH_MAXITER, tolfun=SEARCH_TOLFUN)
             loss = mean_nll(m, X_val)
@@ -89,11 +204,11 @@ def plot_loss_history(history):
 
 
 def plot_density_check(model, X_val_theta, val_raw):
-    """
+    '''
     Analogue of the autoencoder reconstruction plot.
     Shows per-feature histograms of validation data overlaid with the P(x)-weighted
     histogram, so the learned density can be compared to the true distribution.
-    """
+    '''
     # model is in LogProbability mode; use log-sum-exp for numerically stable weights
     try:
         log_probs = np.real(model(X_val_theta)).flatten()
@@ -101,7 +216,7 @@ def plot_density_check(model, X_val_theta, val_raw):
         log_probs = np.zeros(X_val_theta.shape[1])
     log_probs -= log_probs.max()
     probs = np.exp(log_probs)
-    w     = probs / probs.sum() if probs.sum() > 0 else np.ones(len(probs)) / len(probs)
+    w = probs / probs.sum() if probs.sum() > 0 else np.ones(len(probs)) / len(probs)
 
     labels = [r'$x_{vis}$', r'$Iso = \Sigma E_{ph}/E_{track}$',
               r'$f_{had} = E_{HCAL}/E_{tot}$', r'$\eta$ (Scaled)']
@@ -129,8 +244,10 @@ def plot_density_check(model, X_val_theta, val_raw):
 
 
 def plot_anomaly_scores(scores_pi, scores_rho):
+    '''Plot anomaly scores, targeting 95% signal efficiency.
+    '''
     threshold_95  = np.percentile(scores_pi, 95)
-    bkg_rejection = background_rejection(scores_pi, scores_rho, target_eff=0.95)
+    bkg_rejection = np.sum(scores_rho > threshold_95) / len(scores_rho)
 
     print("\n=======================================================")
     print(f"Target Signal Efficiency : 95.00%")
@@ -138,11 +255,11 @@ def plot_anomaly_scores(scores_pi, scores_rho):
     print(f"Background Rejection     : {bkg_rejection * 100:.2f}%")
     print("=======================================================\n")
 
-    lo   = np.percentile(np.concatenate([scores_pi, scores_rho]), 0.5)
-    hi   = np.percentile(np.concatenate([scores_pi, scores_rho]), 99.5)
+    lo = np.percentile(np.concatenate([scores_pi, scores_rho]), 0.5)
+    hi = np.percentile(np.concatenate([scores_pi, scores_rho]), 99.5)
     bins = np.linspace(lo, hi, 80)
 
-    w_pi  = np.ones_like(scores_pi)  / len(scores_pi)
+    w_pi = np.ones_like(scores_pi) / len(scores_pi)
     w_rho = np.ones_like(scores_rho) / len(scores_rho)
 
     plt.figure(figsize=(8, 6))
@@ -175,14 +292,13 @@ def plot_anomaly_scores(scores_pi, scores_rho):
 
 
 def plot_roc(scores_pi, scores_rho):
-    from sklearn.metrics import roc_curve
-    y_true   = np.concatenate([np.zeros(len(scores_pi)), np.ones(len(scores_rho))])
+    y_true = np.concatenate([np.zeros(len(scores_pi)), np.ones(len(scores_rho))])
     y_scores = np.concatenate([scores_pi, scores_rho])
-    mask     = np.isfinite(y_scores)
+    mask = np.isfinite(y_scores)
     y_true, y_scores = y_true[mask], y_scores[mask]
 
     fpr, tpr, _ = roc_curve(y_true, y_scores)
-    roc_auc     = compute_auc(scores_pi, scores_rho)
+    roc_auc = auc(fpr, tpr)
 
     plt.figure(figsize=(7, 7))
     plt.fill_between(fpr, tpr, color='darkorange', alpha=0.2)
@@ -204,14 +320,19 @@ def plot_roc(scores_pi, scores_rho):
     print(f"\n[RESULT] Final RTBM AUC: {roc_auc:.4f}")
 
 
-# ── main ───────────────────────────────────────────────────────────────────────
+
 if __name__ == '__main__':
+    start = time.time()
     print("[INFO] Loading datasets...")
     pi_data, rho_data = load_datasets()
     np.random.shuffle(pi_data)
 
-    # split: n_train events for CMA-ES (80/20 train/val), rest for test
-    train_pi, val_pi, test_pi = train_val_test_split(pi_data, args.n_train)
+    # split: n_train events for CMA training (80/20 train/val) . Remaining for AUC curve
+    N = min(args.n_train, len(pi_data))
+    N_tr = int(0.8 * N)
+    train_pi = pi_data[:N_tr]
+    val_pi   = pi_data[N_tr:N]
+    test_pi  = pi_data[N:]    
 
     print(f"[INFO] Train: {len(train_pi)} | Val: {len(val_pi)} | Test pions: {len(test_pi)} | Rho: {len(rho_data)}")
 
@@ -219,69 +340,10 @@ if __name__ == '__main__':
     tr_std, [val_std, test_std, rho_std], (mu, scl) = standardize(
         train_pi, val_pi, test_pi, rho_data)
 
-    # theta expects shape (N_features, N_events)
-    X_tr   = tr_std.T
-    X_val  = val_std.T
+    # transpose for theta
+    X_tr = tr_std.T
+    X_val = val_std.T
     X_test = test_std.T
-    X_rho  = rho_std.T
+    X_rho = rho_std.T
 
-    ncores = min(args.ncores, mp.cpu_count())
-
-    # ── optional hyperparameter search ────────────────────────────────────────
-    n_hidden    = args.n_hidden
-    param_bound = args.param_bound
-
-    if args.optimize:
-        print(f"\n[HYPEROPT] Starting Bayesian search ({args.max_evals} evaluations)...")
-        trials      = Trials()
-        best_idx    = fmin(fn=make_objective(X_tr, X_val, ncores),
-                           space=search_space, algo=tpe.suggest,
-                           max_evals=args.max_evals, trials=trials)
-        best_params = space_eval(search_space, best_idx)
-        n_hidden    = int(best_params['n_hidden'])
-        param_bound = float(best_params['param_bound'])
-
-        print("\n=======================================================")
-        print("BEST HYPERPARAMETERS:")
-        print(f"  n_hidden    : {n_hidden}")
-        print(f"  param_bound : {param_bound:.2f}")
-        print(f"  Best val NLL: {trials.best_trial['result']['loss']:.4f}")
-        print("=======================================================\n")
-
-        with open(os.path.join(OUTDIR, 'hyperopt_trials.pkl'), 'wb') as fh:
-            pickle.dump(trials, fh)
-
-    # ── final training ─────────────────────────────────────────────────────────
-    print(f"\n[TRAIN] RTBM({N_VISIBLE}, {n_hidden}), param_bound={param_bound:.1f}, "
-          f"maxiter={args.maxiter}, tolfun={args.tolfun}")
-    model = make_rtbm(N_VISIBLE, n_hidden, param_bound)
-
-    _, history = train_rtbm(model, X_tr, ncores=ncores,
-                             maxiter=args.maxiter, tolfun=args.tolfun)
-
-    val_nll = mean_nll(model, X_val)
-    print(f"\n[INFO] Validation NLL: {val_nll:.4f}")
-
-    if args.save:
-        payload = {
-            'params':      model.get_parameters(),
-            'n_visible':   N_VISIBLE,
-            'n_hidden':    n_hidden,
-            'param_bound': param_bound,
-            'mu':          mu,
-            'std':         scl,
-        }
-        model_path = os.path.join(OUTDIR, 'model.pkl')
-        with open(model_path, 'wb') as fh:
-            pickle.dump(payload, fh)
-        print(f"[INFO] Saved model to '{model_path}'")
-
-    # ── plots ──────────────────────────────────────────────────────────────────
-    plot_loss_history(history)
-    plot_density_check(model, X_val, val_pi)
-
-    sc_pi  = anomaly_scores(model, X_test)
-    sc_rho = anomaly_scores(model, X_rho)
-
-    plot_anomaly_scores(sc_pi, sc_rho)
-    plot_roc(sc_pi, sc_rho)
+    # AUC vs N_hidden

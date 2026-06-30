@@ -39,7 +39,9 @@ python evaluation.py        # ROC/anomaly score plots on saved model
 **RTBM:**
 ```bash
 cd rtbm_workspace
-python training.py [--save] [--optimize] [-nh N_HIDDEN] [--maxiter N] [--ncores N]
+python training.py [--save] [--optimize] [-nh N_HIDDEN] [--maxiter N] [--ncores N] [--param_bound B]
+python sweep.py [--nh ...] [--pb ...] [--seeds ...]   # performance sweep; see rtbm_workspace/CLAUDE.md
+python plot_performance.py
 ```
 
 Both training scripts create a `training/<outfile>/` directory with plots and an `args.txt` record.
@@ -63,10 +65,11 @@ MadGraph/Pythia8/Delphes simulation
     → autoencoder_workspace/training.py or rtbm_workspace/training.py
 ```
 
-The 4D feature vector per event is `[x_vis, I_gamma, f_had, eta]`. Preprocessing applied identically in both workspaces before any model sees data:
+The 4D feature vector per event is `[x_vis, I_gamma, f_had, eta]`. Both workspaces share this base preprocessing:
 - Column 1 (`I_gamma`) clipped to `[0, 1]`
 - Column 3 (`eta`) linearly rescaled: `(η − 2.5) / 5`
-- RTBM additionally z-score standardizes with training-set statistics
+
+RTBM additionally z-score standardizes with training-set statistics, and applies a logit transform to column 0 (`x_vis`) before standardization — see `rtbm_workspace/math.md` Section 8 for why only `x_vis` (not `eta` or `f_had`) benefits from this.
 
 ## Architecture Notes
 
@@ -76,12 +79,14 @@ The 4D feature vector per event is `[x_vis, I_gamma, f_had, eta]`. Preprocessing
 - TensorFlow parallelism is capped at `physical_cores / 2` to avoid over-subscription
 
 ### RTBM (`rtbm_workspace/`)
-- Model: `RTBM(N_VISIBLE=4, N_HIDDEN, mode=LogProbability)` from the `theta` submodule
-- Optimizer: CMA-ES (gradient-free evolutionary algorithm via the `cma` package), parallelized with `multiprocessing.Pool`
+See **`rtbm_workspace/CLAUDE.md`** for the file layout, numerical gotchas, and performance-sweep tooling. Summary:
+- Model: `RTBM(N_VISIBLE=4, N_HIDDEN, diagonal_T=False, mode=LogProbability)` from the `theta` submodule, constructed via `rtbmlib.make_rtbm` (handles initialisation and CMA bounds — do not call the bare `RTBM(...)` constructor directly)
+- Optimizer: CMA-ES via the `cma` package, parallelized with `multiprocessing.Pool`; invalid (non-positive-definite) candidates get a finite `NAN_PENALTY` rather than being discarded and re-sampled
 - Anomaly score: `−log P(v)`; model is trained only on pion signal
 - **Critical shape convention**: the theta library requires data as `(N_features, N_events)` — the transpose of standard ML convention. Always transpose before passing to the model: `X_tr = train_data.T`
-- Parameter validity: `set_parameters()` returns `False` if the positive-definiteness constraints (T > 0, Q > 0, Schur complement Q − WᵀT⁻¹W > 0) are violated. The training loop discards NaN fitness values and re-samples until a full valid population is assembled.
-- Optional Bayesian hyperparameter search (`--optimize`) via `hyperopt` searches `n_hidden ∈ {1,2,3}` and `param_bound ∈ [5, 50]`
+- Parameter validity: `set_parameters()` returns `False` if the positive-definiteness constraints (T > 0, Q > 0, Schur complement Q − WᵀT⁻¹W > 0) are violated
+- Optional Bayesian hyperparameter search (`--optimize`) via `hyperopt` searches `n_hidden ∈ {2,3,4}` and `param_bound ∈ [1, 8]`
+- `rtbm_workspace/math.md` documents every numerical bug fixed in this model — read it before touching `rtbmlib.make_rtbm` or `train_rtbm`
 
 ### Theta Submodule (`rtbm_workspace/theta/`)
 The Riemann theta function is a Cython/C implementation. Key files:

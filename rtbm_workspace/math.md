@@ -294,9 +294,74 @@ def make_rtbm(nv, nh, param_bound):
     return m
 ```
 
+**3. Widening CMA bounds for the full $T$ matrix**
+
+The theta library's `RTBM.set_bounds(param\_bound)` sets the CMA search box as $[-\texttt{param\_bound},\, +\texttt{param\_bound}]$ **uniformly for all parameters**. This was designed for `diagonal_T=True`, where each T entry is $T_{ii} = x_i^2$ with $x_i \sim \text{Uniform}(-b,\, b)$ and $b = \sqrt{\texttt{param\_bound}}$, so $T_{ii} \in [0, \texttt{param\_bound}]$ — safely inside the bounds.
+
+With `diagonal_T=False` the T matrix is the bottom-right block of $A = X^T X$ (a full 6×6 PSD matrix). Its diagonal entries are now **sums of squares** across all six rows of $X$:
+
+$$T_{ii} = \sum_{j=1}^{6} X_{ji}^2, \qquad X_{ji} \sim \text{Uniform}(-b,\, b)$$
+
+With $b = \sqrt{5} \approx 2.24$ for $\texttt{param\_bound} = 5$: each squared term is at most $5$, and the sum of six gives $\mathbb{E}[T_{ii}] \approx 2b^2 = 10$, with the maximum around $6b^2 = 30$. The initial T diagonal is therefore **$2\times$ to $6\times$ larger than param\_bound**, placing the initial solution outside the CMA bounds before training even starts. CMA raises a `ValueError` immediately.
+
+The fix is to measure the actual largest parameter in the initial vector and set bounds wide enough to contain it:
+
+```python
+actual_max = float(np.max(np.abs(params)))
+m.set_bounds(max(param_bound, actual_max) * 1.2)
+```
+
+A natural concern is that widening the bounds also increases sigma — since `train_rtbm` uses `sigma = max(bounds) * 0.1` — potentially causing Schur violations in the first generation. The two effects cancel precisely because they share the same root cause: a larger full-matrix $T$ means both larger initial parameter values (hence wider bounds, hence larger sigma) **and** a larger Schur complement margin. Concretely:
+
+$$Q - W^T T^{-1} W \approx 10 - \frac{4 \times 1.5^2}{10} \approx 9.1 \gg 0$$
+
+With full $T \approx 10$ and $\sigma \approx 1.5$, the Schur complement is $\sim 9$, compared to $\sim 0.6$ with diagonal $T \approx 1.3$ and $\sigma = 0.5$. The enlarged sigma is not only safe — it is appropriate: the initial T needs to travel from $\sim 10$ down to the optimal $\sim 1$ (for standardised data), a distance of $\sim 9$ covered in about 6 sigma steps. The sigma and the parameter scale are commensurate by construction.
+
 ---
 
-## 10. Summary of Changes
+## 10. Fix: `gen_timeout` Prevents Riemann Theta Lattice-Sum Hangs
+
+### A new failure mode at higher $N_h$: valid parameters, unbounded computation
+
+All prior failure modes (Sections 2, 7) produce a clean, fast signal: `set_parameters()` returns `False`, or the cost evaluates to a finite-but-huge `NAN_PENALTY`-worthy value. During a 45-run sweep over $(N_h, \text{param\_bound})$, a qualitatively different failure appeared at $N_h = 4$: a single CMA-ES candidate caused one worker process to spin at 100% CPU for over 20 minutes without crashing, returning, or raising any exception — silently blocking the entire `multiprocessing.Pool.map()` call (and with it, the whole sweep) indefinitely.
+
+### Why this happens
+
+The theta library evaluates $\theta(z \mid \Omega)$ by truncating the infinite lattice sum to points within a radius $R$ of the origin, where $R$ is computed by `radius()` from the requested accuracy $\varepsilon = 10^{-8}$ and the Cholesky factor of $\text{Im}(\Omega)$. Schematically, $R$ grows as the smallest eigenvalue of $\text{Im}(\Omega)$ shrinks:
+
+$$R \sim \sqrt{\frac{-\log \varepsilon}{\lambda_{\min}(\text{Im}\,\Omega)}}$$
+
+The number of lattice points enumerated by `integer_points_python(g, R, T)` within that radius scales as $R^g$, where $g = N_h$ is the genus of the theta function. A candidate with $T$ or $Q$ positive definite but **numerically close to singular** (passes `check_pos_def`'s `eigenvalues > 0` check with an eigenvalue at, say, $10^{-6}$) gives a large $R$. For $g = 2$ this still enumerates a modest number of points; for $g = 4$, $R^4$ versus $R^2$ is a difference that can turn a millisecond computation into one that does not finish in any practical time.
+
+This is distinct from the Schur-collapse failure mode: there, `Q - W^T T^{-1} W$ is **not** positive definite and `set_parameters()` rejects the candidate before the theta function is ever evaluated. Here, the candidate is **valid** — it just summons an enormous, but finite, computation.
+
+### Why `multiprocessing.Pool` cannot recover on its own
+
+`pool.map()` is synchronous: it waits for *all* dispatched tasks to return before yielding control back to the caller. With `popsize` candidates split across `ncores` workers, one stuck worker blocks the entire batch — the other 13 workers in a 14-worker pool can finish in seconds and then sit idle, while the main process waits forever for the 14th. `Pool` provides no built-in mechanism to cancel an in-flight task.
+
+### Fix: a per-generation timeout with forced pool termination
+
+```python
+try:
+    fits = pool.map_async(worker_compute, candidates).get(timeout=gen_timeout)
+except mp.TimeoutError:
+    raise TrainingTimeout(...)
+finally:
+    pool.terminate()   # forceful kill, not pool.close() (which waits for pending tasks)
+    pool.join()
+```
+
+`map_async(...).get(timeout=...)` raises `multiprocessing.TimeoutError` if results aren't ready in time, without needing to know which specific worker is stuck. The `finally: pool.terminate()` then forcibly kills *all* workers (including the hung one) rather than `pool.close()`, which would itself wait for the stuck task to finish — defeating the purpose. `TrainingTimeout` is a `RuntimeError` subclass, so it is caught by the same `except Exception` blocks that already handle Schur-failure crashes in `sweep.py` and the hyperopt objective in `training.py` — a single pathological $(N_h, \text{param\_bound})$ combination now fails that one run within `gen_timeout` seconds (default 60s, configurable via `sweep.py --gen_timeout`) instead of hanging forever.
+
+The single-core path (`ncores=1`) uses `signal.alarm` for the same effect, since there is no worker process to terminate — the alarm simply interrupts the current call stack with a `TrainingTimeout`.
+
+### Practical takeaway
+
+Higher $N_h$ is not free even when CMA-ES navigates the Schur constraint successfully — the theta function's intrinsic cost can blow up combinatorially in $N_h$ for borderline-singular parameters that occur naturally during exploration. Sweeps including $N_h \geq 4$ should always run with a finite `gen_timeout`.
+
+---
+
+## 11. Summary of Changes
 
 | Parameter | Old | New | Reason |
 |-----------|-----|-----|--------|
@@ -315,3 +380,4 @@ def make_rtbm(nv, nh, param_bound):
 | Error handling | none | `try/except LinAlgError` | Guards against marginal-Schur Cholesky crash in main process after training |
 | $x_\text{vis}$ preprocessing | linear in $[0,1]$ | logit transform | Maps bounded flat distribution to logistic (Gaussian-like); initial model fits shape from generation 0 |
 | $\eta$ preprocessing | $(η-2.5)/5$ | unchanged | Logit fails: events pile up at the lower acceptance boundary $\eta \approx -2.5$, creating a spike at $-9.2$ in logit space |
+| `train_rtbm` generation timeout | none | `gen_timeout=60s` via `pool.map_async().get(timeout=...)` + forced `pool.terminate()` | A near-singular (but valid) $T/Q$ at $N_h \geq 4$ can make the theta lattice sum hang a worker indefinitely; `pool.map()` has no built-in cancellation, so one stuck candidate blocks the whole sweep forever without a timeout |
