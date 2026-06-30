@@ -2,6 +2,8 @@
 
 This document summarizes the performance-tooling work in `rtbm_workspace/`: the shared library, the hyperparameter search, the grid sweep, an incident encountered while running it, and the final results.
 
+> **Caveat added after this was first written**: `param_bound \leq 4` was found to have **no effect** on the actual run due to a `random_bound` floor + CMA-bounds-widening interaction (math.md Section 11) — `param_bound \in \{1,2,3\}` silently collapsed into duplicate runs of the same configuration, in every sweep including the one summarized below. This is now fixed. The $N_h$ reliability/crash-rate finding below is unaffected (it didn't depend on which low `param_bound` was tested), but `heatmap_pb_nh.png`'s shape at low `param_bound` does not reflect genuine variation and `sweep_results.csv`/`sweep_runs/`/`sweep_plots/` should be regenerated from a clean sweep before drawing further conclusions from the `param_bound` axis specifically.
+
 ## What Was Built
 
 | File | Purpose |

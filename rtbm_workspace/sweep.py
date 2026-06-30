@@ -34,7 +34,7 @@ from rtbmlib import (
 
 CSV_FIELDS = [
     'nh', 'param_bound', 'seed', 'n_params', 'popsize', 'maxiter', 'fevals',
-    'time_sec', 'val_nll', 'auc', 'bkg_rejection_95',
+    'ncores', 'time_sec', 'val_nll', 'auc', 'bkg_rejection_95',
     'final_valid_fraction', 'mean_valid_fraction', 'status',
 ]
 
@@ -86,7 +86,24 @@ def main():
     X_tr, X_val, X_test, X_rho = tr_std.T, val_std.T, test_std.T, rho_std.T
 
     combos = [(nh, pb, seed) for nh in args.nh for pb in args.pb for seed in args.seeds]
-    print(f"[INFO] {len(combos)} runs: {len(args.nh)} nh x {len(args.pb)} pb x {len(args.seeds)} seeds")
+
+    # --out is opened in append mode so an interrupted sweep (e.g. killed after
+    # a hang -- see math.md Section 10) can be resumed without re-running
+    # already-completed combos. To make that safe when the requested grid
+    # overlaps a previous run (different --pb/--seeds covering the same
+    # point), skip any (nh, param_bound, seed) already present in the file
+    # rather than silently appending a duplicate row.
+    already_done = set()
+    if os.path.exists(args.out):
+        with open(args.out, newline='') as f:
+            for r in csv.DictReader(f):
+                already_done.add((int(r['nh']), float(r['param_bound']), int(r['seed'])))
+        if already_done:
+            print(f"[INFO] {len(already_done)} run(s) already in '{args.out}' -- will be skipped")
+
+    combos = [c for c in combos if c not in already_done]
+    print(f"[INFO] {len(combos)} runs to do: {len(args.nh)} nh x {len(args.pb)} pb x {len(args.seeds)} seeds, "
+          f"minus already-completed")
 
     write_header = not os.path.exists(args.out)
     csv_file = open(args.out, 'a', newline='')
@@ -98,7 +115,7 @@ def main():
         tag = run_tag(nh, pb, seed)
         print(f"\n[{i+1}/{len(combos)}] nh={nh} param_bound={pb:.2f} seed={seed}")
 
-        row = {'nh': nh, 'param_bound': pb, 'seed': seed, 'status': 'ok'}
+        row = {'nh': nh, 'param_bound': pb, 'seed': seed, 'ncores': args.ncores, 'status': 'ok'}
 
         # model-and-CMA randomness uses --seeds; data above used --data_seed
         np.random.seed(seed)
@@ -123,7 +140,7 @@ def main():
         try:
             _, history, diag = train_rtbm(model, X_tr, ncores=args.ncores, maxiter=maxiter,
                                            seed=seed, return_diagnostics=True,
-                                           gen_timeout=args.gen_timeout)
+                                           gen_timeout=args.gen_timeout, init_sigma=pb * 0.1)
         except Exception as exc:
             print(f"  [FAIL] train: {exc}")
             row.update(fevals=None, time_sec=time.time() - t0, val_nll=1e9, auc=None,

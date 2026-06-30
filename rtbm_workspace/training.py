@@ -62,7 +62,8 @@ def make_objective(X_tr, X_val, ncores):
         pb = float(params['param_bound'])
         m  = make_rtbm(N_VISIBLE, nh, pb)
         try:
-            train_rtbm(m, X_tr, ncores=ncores, maxiter=SEARCH_MAXITER, tolfun=SEARCH_TOLFUN)
+            train_rtbm(m, X_tr, ncores=ncores, maxiter=SEARCH_MAXITER, tolfun=SEARCH_TOLFUN,
+                       init_sigma=pb * 0.1)
             loss = mean_nll(m, X_val)
         except Exception as exc:
             print(f"  [HYPEROPT] Trial failed: {exc}")
@@ -257,7 +258,8 @@ if __name__ == '__main__':
     model = make_rtbm(N_VISIBLE, n_hidden, param_bound)
 
     _, history = train_rtbm(model, X_tr, ncores=ncores,
-                             maxiter=args.maxiter, tolfun=args.tolfun)
+                             maxiter=args.maxiter, tolfun=args.tolfun,
+                             init_sigma=param_bound * 0.1)
 
     val_nll = mean_nll(model, X_val)
     print(f"\n[INFO] Validation NLL: {val_nll:.4f}")

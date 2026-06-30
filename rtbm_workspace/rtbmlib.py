@@ -94,13 +94,22 @@ def make_rtbm(nv, nh, param_bound, max_tries=200):
     at init (same numerical benefit as diagonal_T=True) without the
     architectural restriction. See math.md Section 3.
 
-    random_bound scales as sqrt(param_bound) so E[T_ii]/sigma stays ~3.3,
-    keeping the Schur complement Q - W^T T^{-1} W positive after the first
-    CMA perturbation (math.md Section 9). CMA bounds are widened to contain
-    the actual initial parameters, since full-T diagonal entries are sums
-    of squares and can exceed param_bound (math.md Section 9.3).
+    random_bound scales as sqrt(param_bound), with NO floor: a floor (e.g.
+    max(2, ...)) makes random_bound -- and hence the entire initial draw --
+    IDENTICAL for any param_bound below the floor's square, silently
+    collapsing the param_bound sweep into a handful of duplicate points
+    (math.md Section 11). Without the floor, E[T_ii]/sigma stays constant
+    across param_bound by construction (both scale with param_bound), so
+    the Schur-complement safety margin from math.md Section 9 is preserved
+    at every param_bound, not just large ones.
+
+    CMA bounds are still widened to contain the actual initial parameters
+    (full-T diagonal entries are sums of squares and can exceed param_bound
+    -- math.md Section 9.3), but train_rtbm is given the *requested*
+    param_bound separately via init_sigma, so the widened box constraint
+    never silently overrides the user's intended exploration step size.
     """
-    random_bound = max(2.0, param_bound ** 0.5)
+    random_bound = param_bound ** 0.5
     sigma = param_bound * 0.1
     for _ in range(max_tries):
         m = RTBM(nv, nh, init_max_param_bound=param_bound, random_bound=random_bound,
@@ -143,7 +152,7 @@ def default_popsize(n_params):
 
 # ── training ──────────────────────────────────────────────────────────────────
 def train_rtbm(model, x_theta, ncores=1, maxiter=200, tolfun=0.0, seed=None,
-                return_diagnostics=False, gen_timeout=GEN_TIMEOUT):
+                return_diagnostics=False, gen_timeout=GEN_TIMEOUT, init_sigma=None):
     """CMA-ES training loop.
 
     Returns (best_params, history) by default, matching training.py's
@@ -163,9 +172,17 @@ def train_rtbm(model, x_theta, ncores=1, maxiter=200, tolfun=0.0, seed=None,
     near-singular T/Q candidate making the Riemann theta lattice sum hang
     indefinitely (see TrainingTimeout docstring above). Callers should
     treat this the same as any other training failure (catch and skip).
+
+    init_sigma, if given, sets CMA's initial step size directly (callers
+    should pass param_bound * 0.1). If omitted, falls back to
+    max(model.get_bounds()[1]) * 0.1 -- but that fallback silently loses
+    param_bound's identity whenever make_rtbm had to widen the bounds past
+    the requested param_bound (math.md Section 11): different param_bound
+    values can then produce byte-for-byte identical runs. Always pass
+    init_sigma explicitly when param_bound is meant to vary the search.
     """
     initsol  = np.real(model.get_parameters())
-    sigma    = np.max(model.get_bounds()[1]) * 0.1
+    sigma    = init_sigma if init_sigma is not None else np.max(model.get_bounds()[1]) * 0.1
     cma_opts = {
         'bounds':         model.get_bounds(),
         'tolfun':         tolfun,

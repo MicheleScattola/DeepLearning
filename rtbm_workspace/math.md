@@ -355,13 +355,74 @@ finally:
 
 The single-core path (`ncores=1`) uses `signal.alarm` for the same effect, since there is no worker process to terminate — the alarm simply interrupts the current call stack with a `TrainingTimeout`.
 
+### Sub-timeout cost: the same mechanism degrades "successful" runs too
+
+With `gen_timeout` in place (no hangs), a 45-run sweep still showed $N_h=4$'s wall-clock time varying **over 10x** across `param_bound` — `param_bound=1` runs took 28–56s/core, `param_bound=8` runs took 5–7s/core, at the same `ncores=8` and the same number of generations (`maxiter` is fixed by `feval_budget // popsize`, independent of `param_bound`). This is not noise: sorted by `param_bound`, the times form a clean monotonic trend, not a scatter.
+
+The saved `valid_fraction` history of the slowest run (`pb=1`, 55.8s/core) versus a fast one (`pb=8`, 7.3s/core), both 200 generations:
+
+| | mean valid fraction | time / core |
+|---|---|---|
+| `pb=1` | 0.978 | 55.8s |
+| `pb=8` | 0.697 | 7.3s |
+
+The valid-fraction ratio (1.4×) accounts for only a fraction of the 7.6× time difference. The rest comes from **how expensive each valid evaluation is**, which depends on how close to singular the evaluated $T/Q$ actually are — not merely on whether they pass the `eigenvalues > 0` check.
+
+**Mechanism.** At small `param_bound`, $\sigma = \text{param\_bound} \times 0.1$ is tiny, so CMA-ES barely moves from its starting point for the entire run. That starting point was accepted by `make_rtbm`'s retry loop on a loose bar ($\text{diag}(T) > \sigma = 0.1$ at $\text{pb}=1$) — i.e. only just barely non-singular. Since CMA cannot escape that neighbourhood with such a small step, essentially every candidate it evaluates for the *whole run* sits near that same marginally-singular region, inflating $R$ (and hence the $R^{N_h}$ lattice-point count, Section 10 above) on nearly every single evaluation. At large `param_bound`, CMA explores broadly; a valid candidate reached via a large random jump is statistically far less likely to land exactly near the singular boundary than one reached via a tiny jump that started right next to it — so when CMA does land on a valid candidate, it tends to be cheaper to evaluate, even though fewer candidates qualify as valid at all.
+
+**Why this compounds specifically at high $N_h$.** From the $R^g$ scaling above ($g = N_h$), the same "trapped near a marginal boundary" effect that costs $N_h=2$ a factor of $R^2$ costs $N_h=4$ a factor of $R^4$. A given increase in $R$ from sitting near-singular compounds dramatically more as $N_h$ grows. This is why pooling timing data across `param_bound` for `compute_scaling.png` — the statistically correct choice, since compute cost should generically depend on $N_h$ rather than `param_bound` — surfaces a genuinely **bimodal** cost distribution at $N_h=4$ that does not average out even at $n=28$: it is not sampling noise that a larger sample would shrink, it is two qualitatively different regimes (cheap-and-exploring vs. expensive-and-trapped) whose population split shifts with $N_h$.
+
 ### Practical takeaway
 
-Higher $N_h$ is not free even when CMA-ES navigates the Schur constraint successfully — the theta function's intrinsic cost can blow up combinatorially in $N_h$ for borderline-singular parameters that occur naturally during exploration. Sweeps including $N_h \geq 4$ should always run with a finite `gen_timeout`.
+Higher $N_h$ is not free even when CMA-ES navigates the Schur constraint successfully — the theta function's intrinsic cost can blow up combinatorially in $N_h$ for borderline-singular parameters that occur naturally during exploration, both catastrophically (the hang above) and gradually (the 10x cost spread above). Both failure modes get worse at *small* `param_bound`, not large — counter-intuitively, the "safer", smaller step size is also the one that traps CMA-ES near a marginal, expensive-to-evaluate boundary for the entire run. Sweeps including $N_h \geq 4$ should always run with a finite `gen_timeout`, and timing comparisons across $N_h$ should pool across `param_bound` rather than fix it, since the cost distribution itself is part of what differs between architectures.
 
 ---
 
-## 11. Summary of Changes
+## 11. Fix: `param_bound` Silently Had No Effect Below ~4
+
+### Symptom
+
+A sweep with an expanded `param_bound` grid (`1, 3, 5, 8, 10`) and more seeds (5 instead of 3) produced heatmap and scaling plots that looked unexpectedly flat across $N_h \in \{2, 3\}$. Direct inspection of `sweep_results.csv` showed something far more specific than statistical smoothing: for the same `(n_hidden, seed)`, **`param_bound = 1.0`, `2.0`, and `3.0` produced bit-for-bit identical `val_NLL`** (e.g. `5.13235764507767` exactly twice), and identical *crashes* (all three giving the `1e9` sentinel together). `param_bound \geq 5` varied normally.
+
+### Root cause: two compounding overrides
+
+**(a) The `random_bound` floor.** `make_rtbm` set:
+
+```python
+random_bound = max(2.0, param_bound ** 0.5)
+```
+
+For any $\texttt{param\_bound} \leq 4$, $\sqrt{\texttt{param\_bound}} \leq 2$, so `random_bound` was **pinned at the floor value of 2.0** regardless of the actual requested `param_bound`. Since `random_init` draws from $\text{Uniform}(-\text{random\_bound}, +\text{random\_bound})$, the same seed produced the **identical initial model** for every `param_bound` in $[0, 4]$.
+
+**(b) The bounds-widening override.** `make_rtbm` then set:
+
+```python
+m.set_bounds(max(param_bound, actual_max) * 1.2)
+```
+
+Because the initial model from (a) is identical across this range, `actual_max` (the largest absolute parameter value) is identical too — and for a full-$T$ matrix (Section 3), $\texttt{actual\_max}$ routinely exceeds 3–4 (diagonal entries are sums of six squared draws). So $\max(\texttt{param\_bound}, \texttt{actual\_max})$ evaluates to $\texttt{actual\_max}$ **regardless of the nominal `param_bound`**, making the CMA bounds — and therefore `train_rtbm`'s `sigma = \max(\text{bounds}) \times 0.1` — identical as well.
+
+Identical initial model + identical bounds + identical sigma + identical CMA seed $\Rightarrow$ identical optimisation trajectory. `param_bound \in \{1, 2, 3\}$ were silently testing the exact same configuration in *every* sweep run conducted so far, including the very first one — the duplication was only noticed once a wider grid made it visually obvious in the heatmap.
+
+### Fix
+
+**Remove the floor.** `random_bound = param_bound ** 0.5` (no `max(2.0, ...)`). This is safe: the Schur-margin invariant from Section 9 is preserved automatically, because both `random_bound` and `sigma` scale with `param_bound` — for a full-$T$ matrix, $\mathbb{E}[T_{ii}] \approx 2 \cdot \texttt{random\_bound}^2 = 2\,\texttt{param\_bound}$, while $\sigma = 0.1\,\texttt{param\_bound}$, giving a constant ratio $\mathbb{E}[T_{ii}]/\sigma = 20$ independent of `param_bound`.
+
+**Decouple `sigma` from the widened bounds.** `train_rtbm` now accepts an explicit `init_sigma` parameter; callers (`sweep.py`, `training.py`) pass `param_bound * 0.1` directly instead of letting `sigma` be inferred from `max(model.get_bounds()[1])`. The box-constraint bounds still need widening to contain the initial point (Section 9.3), but the *exploration step size* now always reflects the literal requested `param_bound`, never silently overridden by however much the bounds needed to grow.
+
+Verified directly: with the fix, `(n_hidden=2, seed=1)` at `param_bound = 1.0, 2.0, 3.0` now gives three different initial models (max $|param|$ = 3.8, 7.6, 11.5 respectively) and three different `val_NLL` after training.
+
+### Secondary issue: `sweep.py` appending duplicate rows
+
+Independent of the bug above, re-running `sweep.py` with an overlapping `--pb`/`--seeds` grid against an existing `--out` CSV appended duplicate `(n_hidden, param_bound, seed)` rows rather than skipping them (the file is opened in append mode so an interrupted sweep — Section 10 — can resume without re-running completed combos). Fixed by reading existing rows on startup and skipping any combo already present.
+
+### Practical impact
+
+Every `param_bound` sweep run prior to this fix had effectively only 2-3 distinct `param_bound` values represented (the low end collapsed into one point, only the points above the collapse threshold were genuinely distinct). `best_pb_per_nh`'s selection and any conclusions drawn about the *shape* of the `param_bound` response (as opposed to just "low vs high") from that data should be treated as unreliable. The summary.md results comparing $N_h$ remain valid in their qualitative conclusion (nh=3 as the reliable middle ground), since the crash-rate finding was independent of which specific low `param_bound` value was tested, but the `heatmap_pb_nh.png` shape at low `param_bound` does not reflect genuine variation and should be regenerated from a fresh sweep.
+
+---
+
+## 12. Summary of Changes
 
 | Parameter | Old | New | Reason |
 |-----------|-----|-----|--------|
@@ -381,3 +442,6 @@ Higher $N_h$ is not free even when CMA-ES navigates the Schur constraint success
 | $x_\text{vis}$ preprocessing | linear in $[0,1]$ | logit transform | Maps bounded flat distribution to logistic (Gaussian-like); initial model fits shape from generation 0 |
 | $\eta$ preprocessing | $(η-2.5)/5$ | unchanged | Logit fails: events pile up at the lower acceptance boundary $\eta \approx -2.5$, creating a spike at $-9.2$ in logit space |
 | `train_rtbm` generation timeout | none | `gen_timeout=60s` via `pool.map_async().get(timeout=...)` + forced `pool.terminate()` | A near-singular (but valid) $T/Q$ at $N_h \geq 4$ can make the theta lattice sum hang a worker indefinitely; `pool.map()` has no built-in cancellation, so one stuck candidate blocks the whole sweep forever without a timeout |
+| `random_bound` floor | `max(2, sqrt(param_bound))` | `sqrt(param_bound)` (no floor) | Floor pinned the initial draw identical for any param_bound $\leq 4$, silently collapsing those sweep points into duplicates |
+| `train_rtbm` sigma source | `max(model.get_bounds()[1]) * 0.1` | explicit `init_sigma = param_bound * 0.1` | Widened bounds (Sec. 9.3) could make `sigma` identical across different param_bound values too, compounding the collapse above |
+| `sweep.py` resume behaviour | blind append | skip `(nh, pb, seed)` already in CSV | Re-running with an overlapping grid against an existing `--out` file silently duplicated rows |
