@@ -1,0 +1,10 @@
+outfile: singlerun_nh3_pb5
+n_hidden: 3
+maxiter: 200
+tolfun: 1e-05
+ncores: 8
+param_bound: 5.0
+n_train: 10000
+optimize: False
+max_evals: 15
+save: True

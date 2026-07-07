@@ -1,0 +1,10 @@
+outfile: ntrain20k_maxevals50_maxiter300
+n_hidden: 2
+maxiter: 300
+tolfun: 1e-05
+ncores: 8
+param_bound: 5.0
+n_train: 20000
+optimize: True
+max_evals: 50
+save: True

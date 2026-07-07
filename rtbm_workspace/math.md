@@ -14,6 +14,41 @@ $$\theta(z \mid \Omega) = \sum_{n \in \mathbb{Z}^{N_h}} \exp\!\left(2\pi i \left
 
 In Phase I (the setting used here), $z$ is purely imaginary and $\Omega$ is purely imaginary with positive-definite imaginary part, so the sum becomes a real decaying exponential and is always convergent and positive. The library factors this as $\theta = e^u \cdot v$ where $u$ is the dominant exponential growth and $v$ is the bounded oscillatory part.
 
+### Theta ratio at $W=0$: convergence and the Schur distinction
+
+Substituting the period matrix $\Omega = -Q/(2\pi i) = iQ/(2\pi)$ and argument $z(v) = (W^T v + B_h)/(2\pi i)$ into the lattice sum:
+
+$$\theta\!\left(z(v)\,\bigg|\,\frac{iQ}{2\pi}\right) = \sum_{n \in \mathbb{Z}^{N_h}} \exp\!\left(-\tfrac{1}{2}n^T Q n + n^T(W^T v + B_h)\right)$$
+
+At **$W=0$, $B_h=0$** the argument is identically zero for every event $v$, so numerator equals denominator:
+
+$$\tilde{\theta}(v) = \frac{\theta(0\,|\,iQ/2\pi)}{\theta(0\,|\,iQ/2\pi)} = 1 \qquad \forall\, v$$
+
+and the model reduces to a pure Gaussian. This is why zeroing $W$ after `random_init` (Section 3) gives a numerically stable starting point.
+
+**Convergence of $\theta(0\,|\,iQ/2\pi)$.** The series $\sum_n e^{-\frac{1}{2}n^T Q n}$ converges whenever $Q > 0$ (positive definite). Since
+
+$$n^T Q n \geq \lambda_{\min}(Q)\,|n|^2 \to \infty \quad\text{as } |n| \to \infty,$$
+
+each term decays like $e^{-\frac{\lambda_{\min}}{2}|n|^2}$ — a lattice Gaussian — and the series is absolutely summable. $Q > 0$ is guaranteed at initialisation by construction, so the theta function is always well-defined and finite at $W=0$.
+
+**Convergence at a single $v$ with $W \neq 0$.** For any fixed event $v$, the numerator $\sum_n e^{-\frac{1}{2}n^T Q n + n^T(W^T v + B_h)}$ also converges: the linear term $n^T(W^T v + B_h)$ grows as $|n|$ but the quadratic $-\frac{1}{2}n^T Q n$ grows as $|n|^2$, so the quadratic always wins for large $|n|$. The theta series is finite at every fixed $v$ as long as $Q > 0$, regardless of $W$.
+
+**The Schur complement is about normalisability, not pointwise convergence.** These two conditions are separate:
+
+| Condition | What it guarantees |
+|---|---|
+| $Q > 0$ | $\theta(z(v)\,|\,iQ/2\pi) < \infty$ at each fixed $v$ |
+| $Q - W^T T^{-1} W > 0$ (Schur) | $Z = \int P(v)\,dv < \infty$ — the model is normalisable |
+
+With $W \neq 0$, the Schur complement controls whether integrating $P(v)$ over *all* $v$ converges. Completing the square in $h$ and then integrating over $v$ yields an effective Gaussian in $v$ with precision $T - WQ^{-1}W^T$. If this matrix is not positive definite, $P(v) \to \infty$ in some direction as $|v| \to \infty$ and no proper distribution exists. $Q > 0$ alone cannot prevent this.
+
+**Why $W \neq 0$ is also computationally expensive.** With non-zero $W$ the lattice peak shifts to $n^* = Q^{-1}(W^T v + B_h)$, and the theta library must enumerate all lattice points within radius $R$ of the origin, where $R$ grows with the displacement:
+
+$$R \sim \frac{|W^T v|}{\sqrt{\lambda_{\min}(Q)}}$$
+
+The number of lattice points scales as $R^{N_h}$. At $W=0$ the peak is always at $n=0$, $R$ is small, and the sum is fast and cheap for every event — an additional reason (beyond the theta ratio = 1 initialisation benefit) to start from $W=0$ before releasing $W$ to CMA-ES training.
+
 ---
 
 ## 2. The Root Cause of Training Failure: $W \neq 0$ at Initialisation

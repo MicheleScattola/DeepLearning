@@ -1,0 +1,10 @@
+outfile: singlerun_nh2_pb7
+n_hidden: 2
+maxiter: 200
+tolfun: 1e-05
+ncores: 8
+param_bound: 7.0
+n_train: 10000
+optimize: False
+max_evals: 15
+save: True
