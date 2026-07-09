@@ -263,15 +263,15 @@ giving 21 (Nh=2), 26 (Nh=3), 32 (Nh=4). CMA-ES runtime scales roughly as $N_\tex
 
 ---
 
-## 9. Fix: Arcsine Initialisation Trap and `make_rtbm` Retry Loop
+## 9. Fix: Small-$T_{ii}$ Initialisation Trap and `make_rtbm` Retry Loop
 
-### The arcsine distribution of `T_ii` at initialisation
+### The distribution of `T_ii` at initialisation
 
-`random_init` with `diagonal_T=True` draws a diagonal matrix with entries $x_i \sim \text{Uniform}(-b, b)$ and then sets $T_{ii} = x_i^2$. The distribution of $x_i^2$ is arcsine-like on $[0, b^2]$, with PDF:
+`random_init` with `diagonal_T=True` draws a diagonal matrix with entries $x_i \sim \text{Uniform}(-b, b)$ and then sets $T_{ii} = x_i^2$. The CDF of $T_{ii} = x_i^2$ follows from $P(x_i^2 \leq y) = P(|x_i| \leq \sqrt{y}) = \sqrt{y}/b$, giving PDF:
 
 $$f(y) = \frac{1}{2b\sqrt{y}}, \quad y \in [0, b^2]$$
 
-This is concentrated near **both** 0 and $b^2$. In particular:
+This is **monotonically decreasing** — it diverges at $y=0$ and falls to $1/(2b^2)$ at $y=b^2$, so the mass is concentrated near 0 only. In particular:
 
 $$P(T_{ii} < \varepsilon) = \frac{\sqrt{\varepsilon}}{b}$$
 
@@ -295,13 +295,19 @@ The function `make_rtbm(nv, nh, param_bound)` replaces direct `RTBM(...)` calls 
 
 **1. Scale `random_bound` with `sqrt(param_bound)`**
 
-Setting $b = \max(2,\, \sqrt{\texttt{param\_bound}})$ gives:
+The key requirement is that $\mathbb{E}[T_{ii}]/\sigma$ stays **constant regardless of `param_bound`**, so the Schur safety margin does not degrade as `param_bound` grows. Setting $b = \sqrt{\texttt{param\_bound}}$ achieves this in both the diagonal and full-$T$ cases:
+
+**Diagonal $T$** (`diagonal_T=True`): $T_{ii} = x_i^2$ for a single $x_i \sim \text{Uniform}(-b,b)$, so $\mathbb{E}[T_{ii}] = b^2/3$:
 
 $$\frac{\mathbb{E}[T_{ii}]}{\sigma} = \frac{b^2/3}{\texttt{param\_bound} \times 0.1} = \frac{\texttt{param\_bound}/3}{\texttt{param\_bound} \times 0.1} = \frac{10}{3} \approx 3.3$$
 
-The ratio $\mathbb{E}[T_{ii}]/\sigma$ is now **constant regardless of `param_bound`**, removing the systematic degradation at larger bounds. The first-generation Schur complement estimate:
+**Full $T$** (`diagonal_T=False`, the actual implementation): $T_{ii} = \sum_{j=1}^{N_v+N_h} X_{ji}^2$ is a sum of $N_v+N_h = 6$ squared uniforms, so $\mathbb{E}[T_{ii}] = 6 \times b^2/3 = 2b^2$:
 
-$$Q - W^T T^{-1} W \approx \mathbb{E}[Q_{ii}] - N_v \frac{\sigma^2}{\mathbb{E}[T_{ii}]} \approx 3.3\sigma - 4 \times \frac{\sigma^2}{3.3\sigma} = 3.3\sigma - 1.2\sigma = 2.1\sigma > 0$$
+$$\frac{\mathbb{E}[T_{ii}]}{\sigma} = \frac{2b^2}{\texttt{param\_bound} \times 0.1} = \frac{2\,\texttt{param\_bound}}{\texttt{param\_bound} \times 0.1} = 20$$
+
+In both cases the ratio is a fixed constant once $b = \sqrt{\texttt{param\_bound}}$. The full-$T$ margin (20) is larger than the diagonal-$T$ margin (3.3) because $T_{ii}$ is the sum of six independent squared terms rather than one. The first-generation Schur complement estimate (full-$T$ case):
+
+$$Q - W^T T^{-1} W \approx \mathbb{E}[Q_{ii}] - N_v \frac{\sigma^2}{\mathbb{E}[T_{ii}]} \approx 20\sigma\cdot\tfrac{1}{10} - 4\times\frac{\sigma^2}{20\sigma\cdot\tfrac{1}{10}} \approx 2\sigma - 0.2\sigma = 1.8\sigma > 0$$
 
 remains well-positive in expectation.
 
@@ -318,15 +324,20 @@ $$P(\text{pass}) = \left(1 - \frac{\sqrt{\sigma}}{b}\right)^{N_v} \cdot \left(1 
 For $N_v = 4, N_h \in \{2,3,4\}$: $P(\text{pass}) \approx (0.684)^{6\text{–}8} \approx 0.10\text{–}0.08$. The expected number of retries is $\sim 10$–$13$ — negligible overhead compared to a CMA-ES iteration.
 
 ```python
-def make_rtbm(nv, nh, param_bound):
-    random_bound = max(2.0, param_bound ** 0.5)
+def make_rtbm(nv, nh, param_bound, max_tries=200):
+    random_bound = param_bound ** 0.5          # keeps E[T_ii]/sigma constant
     sigma = param_bound * 0.1
-    for _ in range(200):
+    for _ in range(max_tries):
         m = RTBM(nv, nh, init_max_param_bound=param_bound, random_bound=random_bound,
-                 diagonal_T=True, mode=RTBM.Mode.LogProbability)
+                 diagonal_T=False, mode=RTBM.Mode.LogProbability)
         if np.all(np.diag(m.t) > sigma) and np.all(np.diag(m.q) > sigma):
-            return m
-    return m
+            params = np.real(m.get_parameters()).copy()
+            params[nv + nh : nv + nh + nv * nh] = 0.0   # zero W
+            if m.set_parameters(params):
+                actual_max = float(np.max(np.abs(params)))
+                m.set_bounds(max(param_bound, actual_max) * 1.2)
+                return m
+    raise RuntimeError(f"make_rtbm: no valid initialisation in {max_tries} tries")
 ```
 
 **3. Widening CMA bounds for the full $T$ matrix**

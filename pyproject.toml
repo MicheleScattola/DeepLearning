@@ -13,4 +13,5 @@ dependencies = [
     "tensorflow>=2.21.0",
     "setuptools<81",
     "uproot",
+    "seaborn>=0.13.2",
 ]
