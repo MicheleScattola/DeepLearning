@@ -28,8 +28,8 @@ def loadDatasetMix():
   rho = np.load('../datasets/rho.npy')
   pi[:, 1] = np.clip(pi[:, 1], 0.0, 1.0)
   rho[:, 1] = np.clip(rho[:, 1], 0.0, 1.0)
-  pi[:, 3] = (pi[:, 3] - ETA_MAX) / 5.0
-  rho[:, 3] = (rho[:, 3] - ETA_MAX) / 5.0
+  pi[:, 3] = (pi[:, 3] + ETA_MAX) / 5.0
+  rho[:, 3] = (rho[:, 3] + ETA_MAX) / 5.0
   return pi, rho
 
 def calculate_anomaly_scores(model, true_data):
@@ -46,20 +46,15 @@ if __name__ == "__main__":
   print("[INFO] Loading datasets...")
   pi_data, rho_data = loadDatasetMix()
   np.random.shuffle(pi_data)
-
-  #split_index = int(0.8 * len(pi_data))
-  split_index = len(pi_data) - 100000
-  training_pions = pi_data[:split_index].copy()
-  validation_pions = pi_data[split_index:].copy()
-
+  pi_data  =  pi_data[:100000]
   rho_data = rho_data[:100000]
 
   print("[INFO] Loading trained Autoencoder...")
   model = tf.keras.models.load_model("best_pion_autoencoder.keras")
 
-  print(f"[INFO] Running on {len(validation_pions)} pions and {len(rho_data)} rho.")
+  print(f"[INFO] Running on {len(pi_data)} pions and {len(rho_data)} rho.")
 
-  scores_pi = calculate_anomaly_scores(model, validation_pions)
+  scores_pi = calculate_anomaly_scores(model, pi_data)
   scores_rho = calculate_anomaly_scores(model, rho_data)
 
   # calculating threshold and working point

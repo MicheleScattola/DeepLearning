@@ -11,7 +11,7 @@ MAX_EVALS = 20
 
 def setupParallel():
     physical_cores = multiprocessing.cpu_count()
-    target = int(physical_cores / 2)
+    target = int(physical_cores)
     tf.config.threading.set_intra_op_parallelism_threads(target)
     tf.config.threading.set_inter_op_parallelism_threads(target)
     print(f"[SETUP] Tensorflow loaded on {target} physical cores.")
@@ -21,8 +21,8 @@ def loadDatasetMix():
     rho = np.load('../datasets/rho.npy')
     pi[:, 1] = np.clip(pi[:, 1], 0.0, 1.0)
     rho[:, 1] = np.clip(rho[:, 1], 0.0, 1.0)
-    pi[:, 3] = (pi[:, 3] - ETA_MAX) / 5.0
-    rho[:, 3] = (rho[:, 3] - ETA_MAX) / 5.0
+    pi[:, 3] = (pi[:, 3] + ETA_MAX) / 5.0
+    rho[:, 3] = (rho[:, 3] + ETA_MAX) / 5.0
     return pi, rho
 
 # search space for optimization
@@ -33,19 +33,21 @@ space = {
     'dense_2': hp.choice('dense_2', [8, 16])
 }
 
-def objective(params):
-    tf.keras.utils.set_random_seed(42)
-    
+def create_model(params):
     inputs = tf.keras.layers.Input(shape=(4,))
-    x = tf.keras.layers.Dense(params['dense_1'], activation='elu')(inputs)
-    x = tf.keras.layers.Dense(params['dense_2'], activation='elu')(x)
+    x = tf.keras.layers.Dense(params['dense_1'], activation='tanh')(inputs)
+    x = tf.keras.layers.Dense(params['dense_2'], activation='tanh')(x)
     latent = tf.keras.layers.Dense(params['bottleneck'], activation='linear')(x)
     
-    x = tf.keras.layers.Dense(params['dense_2'], activation='elu')(latent)
-    x = tf.keras.layers.Dense(params['dense_1'], activation='elu')(x)
+    x = tf.keras.layers.Dense(params['dense_2'], activation='tanh')(latent)
+    x = tf.keras.layers.Dense(params['dense_1'], activation='tanh')(x)
     outputs = tf.keras.layers.Dense(4, activation='linear')(x)
     
-    model = tf.keras.Model(inputs=inputs, outputs=outputs)
+    return tf.keras.Model(inputs=inputs, outputs=outputs)
+
+def objective(params):
+    tf.keras.utils.set_random_seed(42)
+    model = create_model(params)
     
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=params['learning_rate']),
@@ -132,28 +134,28 @@ if __name__ == "__main__":
     )
 
     best_params = space_eval(space, best_indices)
-    
-    print("\n=======================================================")
-    print("OPTIMIZED RESULTS:")
-    print(f"Learning Rate : {best_params['learning_rate']:.5f}")
-    print(f"Bottleneck    : {best_params['bottleneck']}D")
-    print(f"Dense Layer 1 : {best_params['dense_1']} nodes")
-    print(f"Dense Layer 2 : {best_params['dense_2']} nodes")
-    print(f"Best Val Loss (MSE)   : {trials.best_trial['result']['loss']:.6e}")
-    print("=======================================================\n")
+    best_trial = trials.best_trial
+    if best_trial is None:
+        raise RuntimeError("Hyperopt did not return a best trial.")
+
+    best_result = best_trial["result"]
+    if best_result is None:
+        raise RuntimeError("Hyperopt did not return a best trial result.")
+
+    with open("best.txt", "w", encoding="utf-8") as results_file:
+        print("\n=======================================================", file=results_file)
+        print("OPTIMIZED RESULTS:", file=results_file)
+        print(f"Learning Rate : {best_params['learning_rate']:.5f}", file=results_file)
+        print(f"Bottleneck    : {best_params['bottleneck']}D", file=results_file)
+        print(f"Dense Layer 1 : {best_params['dense_1']} nodes", file=results_file)
+        print(f"Dense Layer 2 : {best_params['dense_2']} nodes", file=results_file)
+        print(f"Best Val Loss (MSE)   : {best_result['loss']:.6e}", file=results_file)
+        print("=======================================================\n", file=results_file)
     
     print("[INFO] Re-train the best model to save to disk...")
-    tf.keras.utils.set_random_seed(42)
-    
-    inputs = tf.keras.layers.Input(shape=(4,))
-    x = tf.keras.layers.Dense(best_params['dense_1'], activation='elu')(inputs)
-    x = tf.keras.layers.Dense(best_params['dense_2'], activation='elu')(x)
-    latent = tf.keras.layers.Dense(best_params['bottleneck'], activation='linear')(x)
-    x = tf.keras.layers.Dense(best_params['dense_2'], activation='elu')(latent)
-    x = tf.keras.layers.Dense(best_params['dense_1'], activation='elu')(x)
-    outputs = tf.keras.layers.Dense(4, activation='linear')(x)
-    
-    champion_model = tf.keras.Model(inputs=inputs, outputs=outputs)
+
+    #tf.keras.utils.set_random_seed(42)
+    champion_model = create_model(best_params)
     champion_model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=best_params['learning_rate']),
         loss='mse'
@@ -163,7 +165,7 @@ if __name__ == "__main__":
     history = champion_model.fit(
         training_pions, training_pions,
         validation_data=(validation_pions, validation_pions),
-        epochs=300, batch_size=256, callbacks=[early_stop], verbose=1
+        epochs=400, batch_size=256, callbacks=[early_stop], verbose=1
     )
     
     champion_model.save("best_pion_autoencoder.keras")
