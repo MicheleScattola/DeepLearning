@@ -49,6 +49,8 @@ if __name__ == "__main__":
   rho_file = os.path.join(INPUTDIR,'rho.npy')
   pi  = np.load(pi_file)
   rho = np.load(rho_file)
+  pi[:, 1] = np.clip(pi[:,  1], 0.0, 1.0)
+  rho[:, 1] = np.clip(rho[:, 1], 0.0, 1.0)
   fig, ax = plt.subplots(2, 2, figsize=(8,8))
   fig.suptitle(r'$\pi$ VS $\rho$ Standar-Model like datasets',fontweight='bold')
   ax[0,0].hist(pi[:,0] ,histtype='step', linewidth=1.5,label='PI', bins=30)
@@ -78,7 +80,7 @@ if __name__ == "__main__":
 
   # correlation heatmaps — justify non-diagonal T
   feat_labels = [r'$x_\mathrm{vis}$', r'$\mathrm{Iso}$', r'$f_\mathrm{had}$', r'$\eta$']
-  fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+  fig, axes = plt.subplots(1, 2, figsize=(8, 4))
   for ax, data, title in zip(axes,
                               [pi_vis, rho_vis],
                               [r'$\pi$ signal', r'$\rho$ background']):
