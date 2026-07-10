@@ -80,7 +80,7 @@ if __name__ == "__main__":
 
   # correlation heatmaps — justify non-diagonal T
   feat_labels = [r'$x_\mathrm{vis}$', r'$\mathrm{Iso}$', r'$f_\mathrm{had}$', r'$\eta$']
-  fig, axes = plt.subplots(1, 2, figsize=(8, 4))
+  fig, axes = plt.subplots(1, 2, figsize=(9, 4))
   for ax, data, title in zip(axes,
                               [pi_vis, rho_vis],
                               [r'$\pi$ signal', r'$\rho$ background']):
