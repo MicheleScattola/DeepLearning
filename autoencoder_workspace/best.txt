@@ -1,10 +1,10 @@
 
 =======================================================
 OPTIMIZED RESULTS:
-Learning Rate : 0.00032
-Bottleneck    : 3D
+Learning Rate : 0.00117
+Bottleneck    : 2D
 Dense Layer 1 : 16 nodes
-Dense Layer 2 : 16 nodes
-Best Val Loss (MSE)   : 5.197695e-05
+Dense Layer 2 : 8 nodes
+Best Val Loss (MSE)   : 4.861157e-05
 =======================================================
 

@@ -45,14 +45,16 @@ if __name__ == "__main__":
 
   print("[INFO] Loading datasets...")
   pi_data, rho_data = loadDatasetMix()
+  np.random.seed(42)
   np.random.shuffle(pi_data)
-  pi_data  =  pi_data[:100000]
+  split_index = int(0.8 * len(pi_data))
+  pi_data  = pi_data[split_index:]   # held-out 20% — not seen during training
   rho_data = rho_data[:100000]
 
   print("[INFO] Loading trained Autoencoder...")
   model = tf.keras.models.load_model("best_pion_autoencoder.keras")
 
-  print(f"[INFO] Running on {len(pi_data)} pions and {len(rho_data)} rho.")
+  print(f"[INFO] Running on {len(pi_data)} held-out pions and {len(rho_data)} rho.")
 
   scores_pi = calculate_anomaly_scores(model, pi_data)
   scores_rho = calculate_anomaly_scores(model, rho_data)
@@ -71,7 +73,10 @@ if __name__ == "__main__":
   print("=======================================================\n")
 
   plt.figure(figsize=(8, 6))
-  log_bins = np.logspace(-9, 0, 100)
+  combined = np.concatenate([scores_pi, scores_rho])
+  lo   = np.log10(np.percentile(combined, 0.1))
+  hi   = np.log10(np.percentile(combined, 90.5))
+  log_bins = np.logspace(lo, hi, 100)
   
   weights_pi = np.ones_like(scores_pi) / len(scores_pi)
   weights_rho = np.ones_like(scores_rho) / len(scores_rho)
@@ -81,14 +86,12 @@ if __name__ == "__main__":
   plt.hist(scores_rho, bins=log_bins, weights=weights_rho, histtype='step', 
             linewidth=2, label=r'Background: $\tau \to \rho\nu$', color='red')
 
-  pi_hist, _ = np.histogram(scores_pi, bins=log_bins, weights=weights_pi)
-  rho_hist, _ = np.histogram(scores_rho, bins=log_bins, weights=weights_rho)
-  bin_centers = np.sqrt(log_bins[:-1] * log_bins[1:])
-
-  plt.fill_between(bin_centers, pi_hist, 0, where=(bin_centers <= threshold_95),
-                   step='mid', color='blue', alpha=0.2)
-  plt.fill_between(bin_centers, rho_hist, 0, where=(bin_centers >= threshold_95),
-                   step='mid', color='red', alpha=0.2)
+  plt.hist(scores_pi[scores_pi <= threshold_95], bins=log_bins,
+           weights=weights_pi[scores_pi <= threshold_95],
+           histtype='stepfilled', alpha=0.2, color='blue')
+  plt.hist(scores_rho[scores_rho >= threshold_95], bins=log_bins,
+           weights=weights_rho[scores_rho >= threshold_95],
+           histtype='stepfilled', alpha=0.2, color='red')
   plt.axvline(threshold_95, color='black', linestyle='--', linewidth=1.5,
               label=r'Threshold: 95% eff. in $\pi$ data')
   
@@ -97,7 +100,7 @@ if __name__ == "__main__":
   plt.ylabel('Fraction of Events')
   plt.xscale('log') 
   
-  plt.legend(frameon=False)
+  plt.legend(frameon=True)
   plt.grid(True, linestyle=':', alpha=0.6)
   plt.grid(True, linestyle=':', alpha=0.6)
   plt.tight_layout()
@@ -123,7 +126,7 @@ if __name__ == "__main__":
   plt.xlabel('FPR (Signal Loss)')
   plt.ylabel('TPR (Background Rejection)')
   plt.title('ROC curve', fontweight='bold')
-  plt.legend(loc="lower right", frameon=False)
+  plt.legend(loc="center", frameon=True)
   plt.grid(True, linestyle=':', alpha=0.6)
   plt.tight_layout()
   

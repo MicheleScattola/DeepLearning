@@ -62,8 +62,8 @@ def load_datasets(eta_max=ETA_MAX):
     rho = np.load('../datasets/rho.npy')
     pi[:,  1] = np.clip(pi[:,  1], 0.0, 1.0)
     rho[:, 1] = np.clip(rho[:, 1], 0.0, 1.0)
-    pi[:,  3] = (pi[:,  3] - eta_max) / 5.0
-    rho[:, 3] = (rho[:, 3] - eta_max) / 5.0
+    pi[:,  3] = (pi[:,  3] + eta_max) / 5.0
+    rho[:, 3] = (rho[:, 3] + eta_max) / 5.0
     eps = 1e-4
     for arr in (pi, rho):
         arr[:, 0] = np.log(np.clip(arr[:, 0], eps, 1-eps) / (1 - np.clip(arr[:, 0], eps, 1-eps)))

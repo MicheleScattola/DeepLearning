@@ -1,0 +1,10 @@
+outfile: opt_30k_pb5to7_maxiter300_maxevals20
+n_hidden: 2
+maxiter: 300
+tolfun: 1e-05
+ncores: 8
+param_bound: 5.0
+n_train: 30000
+optimize: True
+max_evals: 20
+save: True

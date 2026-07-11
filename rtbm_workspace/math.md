@@ -468,7 +468,37 @@ Every `param_bound` sweep run prior to this fix had effectively only 2-3 distinc
 
 ---
 
-## 12. Summary of Changes
+## 12. Why `param_bound` < 10: Competing Effects on Training Stability
+
+The choice of `param_bound` is governed by two competing failure modes that pull in opposite directions, establishing a practical upper limit around 8–10.
+
+### Large `param_bound` → Gaussian envelope degenerates
+
+The Gaussian factor in $P(v)$ is $\exp(-\frac{1}{2} v^T T v)$. As CMA-ES explores large `param_bound` values, $T$ entries grow large and the Gaussian becomes extremely narrow — for standardised data with unit-scale features, large $T_{ii}$ assigns near-zero probability to almost every training event, driving NLL → ∞. Training then consists almost entirely of `NAN_PENALTY` candidates: `mean_valid_fraction` collapses and CMA-ES cannot find a gradient direction to improve.
+
+Separately, a large search box means the fraction of parameter space that corresponds to physically reasonable distributions (moderate $T_{ii}$, well-separated Schur complement) is tiny. CMA-ES must find this small region from a starting point that is already outside it (full-$T$ diagonal entries initialise at $\sim 2\,\texttt{param\_bound}$, far from the optimal $\sim O(1)$ for standardised data), spending most of its evaluation budget navigating back.
+
+### Small `param_bound` → Riemann theta lattice sum hangs
+
+The theta lattice sum converges over a radius (Section 10):
+
+$$R \sim \sqrt{\frac{-\log \varepsilon}{\lambda_{\min}(\text{Im}\,\Omega)}}$$
+
+where $\lambda_{\min}$ is the smallest eigenvalue of $T$ (roughly). When $T$ entries are small — from initialisation or because CMA drifts toward zero during training — $\lambda_{\min} \to 0$ and $R \to \infty$. The number of lattice points grows as $R^{N_h}$, which for $N_h = 4$ can turn a millisecond evaluation into an indefinite hang (Section 10). This is exactly the `TrainingTimeout` failure mode.
+
+Even without hanging, small `param_bound` means $\sigma = \texttt{param\_bound} \times 0.1$ is tiny. The `make_rtbm` retry loop accepts initialisations where $T_{ii}$ just barely exceeds $\sigma$, so the entire CMA-ES run explores a neighbourhood near the Schur boundary — marginally non-singular, expensive to evaluate. As Section 10 shows, `pb=1` runs take $\sim 7\times$ longer per generation than `pb=8` runs at the same `maxiter`, precisely because every evaluation sits near that expensive boundary.
+
+### The natural scale and the sweet spot
+
+For standardised data (zero mean, unit variance), the optimal $T$ entries are $O(1)$: the Gaussian envelope should match the data covariance, which is approximately $I_{N_v}$ after standardisation. The `param_bound` sweep (Section 11) explores $\{1, 2, 3, 5, 8\}$; values in the range $[2, 5]$ consistently give the best AUC and `mean_valid_fraction`. Beyond $\sim 8$ the valid fraction degrades sharply (too much parameter space is infeasible); below $\sim 2$ the theta evaluation slows dramatically (training sits near the singularity for the whole run).
+
+### Connection to the `gen_timeout`
+
+The same asymmetry explains why `gen_timeout` matters more at small `param_bound` than large. At `pb=1`, valid candidates are rare but cheap to produce via rejection — they just cluster near the Schur boundary, where the theta sum is slow. At `pb=8`, valid candidates are rarer still (low `mean_valid_fraction`) but those that do appear are typically far from the boundary and evaluate quickly. The hanging risk (a single candidate making $R^{N_h}$ blow up) is paradoxically higher at small `param_bound`, where borderline-singular parameters are the norm rather than the exception.
+
+---
+
+## 13. Summary of Changes
 
 | Parameter | Old | New | Reason |
 |-----------|-----|-----|--------|

@@ -1,0 +1,2 @@
+
+[OPT] RTBM(4, 4), param_bound=6.7, maxiter=300, tolfun=1e-05
