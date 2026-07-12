@@ -47,14 +47,14 @@ if __name__ == "__main__":
   pi_data, rho_data = loadDatasetMix()
   np.random.seed(42)
   np.random.shuffle(pi_data)
-  split_index = int(0.8 * len(pi_data))
-  pi_data  = pi_data[split_index:]   # held-out 20% — not seen during training
+  val_end  = int(0.85 * len(pi_data))
+  pi_data  = pi_data[val_end:]   # held-out 15% — not seen during training or validation
   rho_data = rho_data[:100000]
 
   print("[INFO] Loading trained Autoencoder...")
   model = tf.keras.models.load_model("best_pion_autoencoder.keras")
 
-  print(f"[INFO] Running on {len(pi_data)} held-out pions and {len(rho_data)} rho.")
+  print(f"[INFO] Running on {len(pi_data)} held-out test pions and {len(rho_data)} rho.")
 
   scores_pi = calculate_anomaly_scores(model, pi_data)
   scores_rho = calculate_anomaly_scores(model, rho_data)

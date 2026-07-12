@@ -1,0 +1,12 @@
+outfile: single_30k_pb6_5
+n_hidden: 4
+maxiter: 200
+tolfun: 1e-05
+ncores: 6
+param_bound: 6.5
+n_train: 30000
+optimize: False
+max_evals: 15
+save: True
+
+[OPT] RTBM(4, 4), param_bound=6.5, maxiter=200, tolfun=1e-05

@@ -100,7 +100,7 @@ def plot_density_check(model, X_val, val_pi, outdir):
     probs = np.exp(log_probs)
     w = probs / probs.sum() if probs.sum() > 0 else np.ones(len(probs)) / len(probs)
 
-    display = to_physical(val_pi)
+    #display = to_physical(val_pi)
     labels  = [r'$x_{vis}$',
                r'$\mathrm{Iso} = \Sigma E_{ph}/E_{track}$',
                r'$f_{had} = E_{HCAL}/E_{tot}$',
@@ -111,7 +111,7 @@ def plot_density_check(model, X_val, val_pi, outdir):
 
     for i in range(4):
         row, col = divmod(i, 2)
-        feat = display[:, i]
+        feat = val_pi[:, i]
         bins = np.linspace(feat.min(), feat.max(), 40)
         ax[row, col].hist(feat, bins=bins, histtype='step', linewidth=1.5,
                           density=True, label='Validation data')

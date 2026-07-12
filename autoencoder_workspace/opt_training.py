@@ -7,11 +7,11 @@ from hyperopt import fmin, tpe, hp, STATUS_OK, Trials, space_eval
 
 
 ETA_MAX = 2.5
-MAX_EVALS = 20
+MAX_EVALS = 30
 
 def setupParallel():
     physical_cores = multiprocessing.cpu_count()
-    target = int(physical_cores)
+    target = int(4)
     tf.config.threading.set_intra_op_parallelism_threads(target)
     tf.config.threading.set_inter_op_parallelism_threads(target)
     print(f"[SETUP] Tensorflow loaded on {target} physical cores.")
@@ -27,22 +27,24 @@ def loadDatasetMix():
 
 # search space for optimization
 space = {
-    'learning_rate': hp.loguniform('learning_rate', np.log(1e-4), np.log(1e-2)),
-    'bottleneck': hp.choice('bottleneck', [2, 3]), 
-    'dense_1': hp.choice('dense_1', [16, 32]),
-    'dense_2': hp.choice('dense_2', [8, 16])
+    'learning_rate': hp.loguniform('learning_rate', np.log(1e-4), np.log(1e-3)),
+    'bottleneck':    hp.choice('bottleneck', [2, 3]),
+    'dense_1':       hp.choice('dense_1',    [16, 32]),
+    'dense_2':       hp.choice('dense_2',    [8, 16]),
+    'activation':    hp.choice('activation', ['tanh', 'relu']),
 }
 
 def create_model(params):
+    act      = params.get('activation', 'tanh')
     inputs = tf.keras.layers.Input(shape=(4,))
-    x = tf.keras.layers.Dense(params['dense_1'], activation='tanh')(inputs)
-    x = tf.keras.layers.Dense(params['dense_2'], activation='tanh')(x)
+    x = tf.keras.layers.Dense(params['dense_1'], activation=act)(inputs)
+    x = tf.keras.layers.Dense(params['dense_2'], activation=act)(x)
     latent = tf.keras.layers.Dense(params['bottleneck'], activation='linear')(x)
     
-    x = tf.keras.layers.Dense(params['dense_2'], activation='tanh')(latent)
-    x = tf.keras.layers.Dense(params['dense_1'], activation='tanh')(x)
+    x = tf.keras.layers.Dense(params['dense_2'], activation=act)(latent)
+    x = tf.keras.layers.Dense(params['dense_1'], activation=act)(x)
     outputs = tf.keras.layers.Dense(4, activation='linear')(x)
-    
+
     return tf.keras.Model(inputs=inputs, outputs=outputs)
 
 def objective(params):
@@ -57,7 +59,7 @@ def objective(params):
     early_stop = tf.keras.callbacks.EarlyStopping(
         monitor='val_loss', patience=15, restore_best_weights=True, verbose=0
     )
-    
+
     history = model.fit(
         training_pions, training_pions,
         validation_data=(validation_pions, validation_pions),
@@ -79,7 +81,7 @@ def plot_history(history):
     plt.xlabel('Epoch')
     plt.ylabel('Mean Squared Error')
     plt.yscale('log')
-    plt.legend(frameon=False)
+    plt.legend(frameon=True)
     plt.grid(True, linestyle=':', alpha=0.6)
     
     outfile = 'best_history.png'
@@ -121,10 +123,13 @@ if __name__ == "__main__":
     np.random.seed(42) 
     np.random.shuffle(pi_data)
 
-    split_index = int(0.8 * len(pi_data))
-    training_pions = pi_data[:split_index].copy()
-    validation_pions = pi_data[split_index:].copy()
-    print(f"[INFO] Data ready. Training Pions: {len(training_pions)} | Validation Pions: {len(validation_pions)}")
+    n          = len(pi_data)
+    train_end  = int(0.7 * n)
+    val_end    = int(0.85 * n)
+    training_pions   = pi_data[:train_end].copy()
+    validation_pions = pi_data[train_end:val_end].copy()
+    # pi_data[val_end:] is the held-out test set — used only in evaluation.py
+    print(f"[INFO] Data ready. Train: {len(training_pions)} | Val: {len(validation_pions)} | Test (held-out): {n - val_end}")
 
     print(f"\n[HYPEROPT] Starting Bayesian Optimization ({MAX_EVALS} evaluations)...")
     trials = Trials()
@@ -146,6 +151,7 @@ if __name__ == "__main__":
         print("\n=======================================================", file=results_file)
         print("OPTIMIZED RESULTS:", file=results_file)
         print(f"Learning Rate : {best_params['learning_rate']:.5f}", file=results_file)
+        print(f"Activation    : {best_params['activation']}", file=results_file)
         print(f"Bottleneck    : {best_params['bottleneck']}D", file=results_file)
         print(f"Dense Layer 1 : {best_params['dense_1']} nodes", file=results_file)
         print(f"Dense Layer 2 : {best_params['dense_2']} nodes", file=results_file)
@@ -160,7 +166,7 @@ if __name__ == "__main__":
         optimizer=tf.keras.optimizers.Adam(learning_rate=best_params['learning_rate']),
         loss='mse'
     )
-    
+
     early_stop = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=30, restore_best_weights=True)
     history = champion_model.fit(
         training_pions, training_pions,

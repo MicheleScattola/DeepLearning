@@ -127,8 +127,11 @@ def plot_scaling_per_param_bound(df, outdir):
 
 
 def plot_heatmap(df, outdir):
-    ok    = df[df['status'] == 'ok']
+    ok    = df[(df['status'] == 'ok') & (df['param_bound'] < 15)]
     good  = ok[ok['val_nll'] < CRASH_THRESHOLD]
+    if good.empty:
+        print("[WARN] No non-crashed successful runs with param_bound > 15; skipping heatmap.")
+        return
     grid  = good.pivot_table(values='val_nll', index='nh', columns='param_bound', aggfunc='mean')
 
     n_ok    = ok.groupby(['nh', 'param_bound']).size().unstack(fill_value=0)
@@ -152,7 +155,7 @@ def plot_heatmap(df, outdir):
                         ha='center', va='center', fontsize=7, color='white')
 
     ax.set_xticks(range(len(pb_vals))); ax.set_xticklabels([f'{pb:.2g}' for pb in pb_vals])
-    ax.set_yticks(range(len(nh_vals))); ax.set_yticklabels([int(nh) for nh in nh_vals])
+    ax.set_yticks(range(len(nh_vals))); ax.set_yticklabels([str(int(nh)) for nh in nh_vals])
     ax.set_xlabel('param_bound'); ax.set_ylabel('$N_h$')
     ax.set_title(r'Validation NLL across (param_bound, $N_h$)', fontweight='bold')
     plt.tight_layout()

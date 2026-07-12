@@ -1,0 +1,10 @@
+outfile: f_50k_nh2_pb7to8_max_evals30
+n_hidden: 2
+maxiter: 200
+tolfun: 1e-05
+ncores: 8
+param_bound: 5.0
+n_train: 50000
+optimize: True
+max_evals: 30
+save: True

@@ -47,8 +47,8 @@ SEARCH_MAXITER = 150   # fast per-trial iterations during search
 SEARCH_TOLFUN  = 1e-4
 
 search_space = {
-    'n_hidden':    hp.choice('n_hidden',    [4]),
-    'param_bound': hp.loguniform('param_bound', np.log(5.0), np.log(7.0)),
+    'n_hidden':    hp.choice('n_hidden',    [2]),
+    'param_bound': hp.uniform('param_bound', 7.0, 8.0),
 }
 
 

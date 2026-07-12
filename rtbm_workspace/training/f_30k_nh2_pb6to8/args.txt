@@ -1,0 +1,12 @@
+outfile: f_30k_nh2_pb6to8
+n_hidden: 2
+maxiter: 200
+tolfun: 1e-05
+ncores: 4
+param_bound: 5.0
+n_train: 30000
+optimize: True
+max_evals: 25
+save: True
+
+[OPT] RTBM(4, 2), param_bound=7.4, maxiter=200, tolfun=1e-05
