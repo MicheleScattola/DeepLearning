@@ -11,7 +11,7 @@ ax1.set_title(r'$f(y)=\frac{1}{2b\sqrt{y}}$ with $y\in[0,b^2]$')
 ax1.set_xlabel(r'$y$')
 ax1.set_ylabel(r'$f(y)=f(x^2)$')
 ax1.legend()
-fig1.savefig('T_ii.png')
+fig1.savefig('T_ii.png', dpi=300)
 
 # Montecarlo for T block
 Nv, Nh = 4, 2
@@ -58,7 +58,7 @@ fig2.suptitle(
     rf' — $T$ block ($N_v={Nv}$, $N_h={Nh}$), $n={N_trials}$ trials'
 )
 fig2.tight_layout()
-fig2.savefig('T_ii_block.png', dpi=150)
+fig2.savefig('T_ii_block.png', dpi=300)
 print(f'Diagonal:    mean={np.mean(diag_vals):.3f}, std={np.std(diag_vals):.3f}, '
       f'min={np.min(diag_vals):.3f}')
 print(f'Off-diagonal: mean={np.mean(offdiag_vals):.3f}, std={np.std(offdiag_vals):.3f}')
