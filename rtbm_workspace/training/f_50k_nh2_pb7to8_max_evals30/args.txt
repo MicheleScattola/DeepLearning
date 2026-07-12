@@ -8,3 +8,5 @@ n_train: 50000
 optimize: True
 max_evals: 30
 save: True
+
+[OPT] RTBM(4, 2), param_bound=7.4, maxiter=200, tolfun=1e-05

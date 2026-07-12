@@ -1,0 +1,12 @@
+outfile: f_single_70k_nh2_pb7_4_maxiter300
+n_hidden: 3
+maxiter: 300
+tolfun: 1e-05
+ncores: 8
+param_bound: 4.3
+n_train: 70000
+optimize: False
+max_evals: 15
+save: True
+
+[OPT] RTBM(4, 3), param_bound=4.3, maxiter=300, tolfun=1e-05

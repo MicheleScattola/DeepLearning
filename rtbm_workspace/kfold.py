@@ -22,9 +22,9 @@ from rtbmlib import (
 )
 
 # ── hyperparameters — update after re-running training.py --optimize ──────────
-K           = 5
-N_HIDDEN    = 4
-PARAM_BOUND = 6.7
+K           = 10
+N_HIDDEN    = 3
+PARAM_BOUND = 4.3
 N_TRAIN     = 30000   # CMA-ES pion events per fold (drawn from the ~80k pool)
 MAXITER     = 300
 
@@ -78,9 +78,16 @@ if __name__ == '__main__':
         print("\n[ERROR] All folds failed.")
     else:
         aucs = np.array(aucs)
-        print("\n=======================================================")
-        print(f"K-Fold Cross-Validation (k={K}, successful folds={len(aucs)})")
-        print(f"AUC per fold : {' '.join(f'{a:.4f}' for a in aucs)}")
-        print(f"Mean AUC     : {aucs.mean():.4f}")
-        print(f"Std AUC      : {aucs.std():.4f}")
-        print("=======================================================")
+        lines = [
+        "\n=======================================================",
+        f"K-Fold Cross-Validation (k={K})",
+        f"AUC per fold : {' '.join(f'{a:.4f}' for a in aucs)}",
+        f"Mean AUC     : {aucs.mean():.4f}",
+        f"Std AUC      : {aucs.std():.4f}",
+        "=======================================================",
+        ]
+        for line in lines:
+            print(line)
+        with open("auc.txt", "w") as f:
+            f.write("\n".join(lines) + "\n")
+        print("[INFO] Saved results to 'auc_nh3s.txt'")
