@@ -14,7 +14,7 @@ from rtbmlib import (
     make_rtbm, train_rtbm, mean_nll,
 )
 
-# ── argparse ──────────────────────────────────────────────────────────────────
+# argparse
 parser = argparse.ArgumentParser(prog='RTBMTraining',
                                  description='RTBM training and hyperparameter search')
 parser.add_argument('-o',  '--outfile',     default='trained_rtbm')
@@ -42,7 +42,7 @@ with open(os.path.join(OUTDIR, 'args.txt'), 'w') as _f:
 np.random.seed(42)
 
 
-# ── hyperopt ──────────────────────────────────────────────────────────────────
+# hyperopt parameter space
 SEARCH_MAXITER = 150   # fast per-trial iterations during search
 SEARCH_TOLFUN  = 1e-4
 
@@ -69,7 +69,7 @@ def make_objective(X_tr, X_val, ncores):
     return objective
 
 
-# ── main ───────────────────────────────────────────────────────────────────────
+# main 
 if __name__ == '__main__':
     print("[INFO] Loading datasets...")
     pi_data, rho_data = load_datasets()
@@ -84,7 +84,6 @@ if __name__ == '__main__':
     tr_std, [val_std, test_std, rho_std], (mu, scl) = standardize(
         train_pi, val_pi, test_pi, rho_data)
 
-    # theta expects shape (N_features, N_events)
     X_tr   = tr_std.T
     X_val  = val_std.T
     X_test = test_std.T
@@ -92,7 +91,7 @@ if __name__ == '__main__':
 
     ncores = min(args.ncores, mp.cpu_count())
 
-    # ── optional hyperparameter search ────────────────────────────────────────
+    # optional hyperparameter search
     n_hidden    = args.n_hidden
     param_bound = args.param_bound
 
@@ -116,7 +115,7 @@ if __name__ == '__main__':
         with open(os.path.join(OUTDIR, 'hyperopt_trials.pkl'), 'wb') as fh:
             pickle.dump(trials, fh)
 
-    # ── final training ─────────────────────────────────────────────────────────
+    # final training 
     print(f"\n[OPT] RTBM({N_VISIBLE}, {n_hidden}), param_bound={param_bound:.1f}, "
           f"maxiter={args.maxiter}, tolfun={args.tolfun}")
     with open(os.path.join(OUTDIR, 'args.txt'), 'a') as _f:

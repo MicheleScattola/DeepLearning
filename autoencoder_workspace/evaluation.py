@@ -48,7 +48,7 @@ if __name__ == "__main__":
   np.random.seed(42)
   np.random.shuffle(pi_data)
   val_end  = int(0.85 * len(pi_data))
-  pi_data  = pi_data[val_end:]   # held-out 15% — not seen during training or validation
+  pi_data  = pi_data[val_end:]   # test has the remaining 15% 
   rho_data = rho_data[:100000]
 
   print("[INFO] Loading trained Autoencoder...")

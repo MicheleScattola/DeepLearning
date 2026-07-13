@@ -4,6 +4,6 @@
 
 The columns of the datasets are in order:
 - $x_{vis} = E_{track}/E_\tau$ 
-- $E_{cone}$ 
+- $Iso$ 
 - $f_{had}$
 - $\eta_{track}$

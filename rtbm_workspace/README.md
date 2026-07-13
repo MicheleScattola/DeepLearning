@@ -2,15 +2,9 @@
 
 This workspace provides an isolated, legacy-compatible environment designed specifically to compile and execute the **Riemann-Theta Boltzmann Machine (RTBM)** framework (`RiemannAI/theta`).
 
-Because the `theta` framework relies on legacy NumPy 1.19.x memory layouts and Cython 0.29 C-macros, it **cannot** run natively under modern Python 3.12+ environments. This workspace isolates a standalone Python 3.8 toolchain to safely compile the underlying C++ Riemann-Theta math engines without affecting your system-wide packages.
-
 ---
 
 ## Prerequisites & System Packages
-
-Before initializing the virtual environment, your Linux distribution must provide the legacy Python binaries and the necessary C++ development headers.
-
-Execute the following commands to add the secure `deadsnakes` repository and install the development dependencies:
 
 ```bash
 # 1. Add the legacy Python repository

@@ -1,11 +1,5 @@
 """Evaluate a saved RTBM model: loss history, density check, anomaly scores, ROC curve.
 
-Loads the pickle written by training.py --save, recreates the same data split with
-the saved mu/std, inverse-transforms preprocessing for display (sigmoid on x_vis,
-raw eta), and saves plots to the same training/<folder>/ directory.
-
-Must be run from within rtbm_workspace/.
-
 Usage:
     python evaluation.py trained_rtbm
     python evaluation.py --folder trained_rtbm
@@ -52,7 +46,7 @@ def load_model_and_data(folder):
     np.random.shuffle(pi_data)
     _, val_pi, test_pi = train_val_test_split(pi_data, n_train)
 
-    # Apply saved standardization — do NOT recompute mu/std from this split
+    # Apply saved standardization 
     X_val  = ((val_pi   - mu) / std).T
     X_test = ((test_pi  - mu) / std).T
     X_rho  = ((rho_data - mu) / std).T

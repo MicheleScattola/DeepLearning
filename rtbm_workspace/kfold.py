@@ -1,10 +1,6 @@
 """K-fold cross-validation for RTBM AUC estimation.
 
 Uses the best hyperparameters found by training.py --optimize.
-Splits only the pion data into k folds; rho is used in full for evaluation
-in every fold (it is never used for training).
-
-Must be run from within rtbm_workspace/.
 """
 import os
 import sys
@@ -18,14 +14,13 @@ from rtbmlib import (
     N_VISIBLE, PARALLEL_CORES,
     load_datasets, standardize,
     make_rtbm, train_rtbm, anomaly_scores, compute_auc,
-    TrainingTimeout,
 )
 
-# ── hyperparameters — update after re-running training.py --optimize ──────────
+# hyperparameters -- TO BE UPDATED ON NEW RUN
 K           = 10
 N_HIDDEN    = 3
 PARAM_BOUND = 4.3
-N_TRAIN     = 30000   # CMA-ES pion events per fold (drawn from the ~80k pool)
+N_TRAIN     = 30000   # CMA events for each fold
 MAXITER     = 300
 
 
@@ -64,7 +59,7 @@ if __name__ == '__main__':
             model = make_rtbm(N_VISIBLE, N_HIDDEN, PARAM_BOUND)
             train_rtbm(model, X_tr, ncores=ncores, maxiter=MAXITER,
                        tolfun=0.0, init_sigma=PARAM_BOUND * 0.1)
-        except (RuntimeError, TrainingTimeout) as e:
+        except RuntimeError as e:
             print(f"[FOLD {fold}/{K}]  FAILED: {e} — skipping fold")
             continue
 

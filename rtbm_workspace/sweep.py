@@ -1,16 +1,5 @@
 """Grid + seed sweep over (n_hidden, param_bound) for RTBM performance studies.
 
-Implements performance.md Sections 2, 3, 5: fixes a function-evaluation
-budget (not a fixed iteration count) so models with different N_hidden are
-compared fairly, runs every trial to completion (NAN_PENALTY stays constant,
-no early truncation of stuck configs), and separates the data split (fixed
-data_seed) from the model/CMA-ES randomness (varying run seed) so that
-seed-to-seed variance reflects optimisation luck, not which events ended up
-in train/val/test.
-
-Does not call training.py or parse its args.txt/stdout -- imports rtbmlib
-directly and writes its own structured CSV, one row per (nh, pb, seed) run.
-
 Usage:
     python sweep.py --nh 2,3,4 --pb 1,2,3,5,8 --seeds 1,2,3,4,5 \\
         --feval_budget 3000 --n_train 8000 --ncores 4 \\
@@ -62,18 +51,14 @@ def main():
                     help='Fixed seed for data shuffling/splitting, independent of --seeds')
     p.add_argument('--ncores',       type=int,   default=PARALLEL_CORES)
     p.add_argument('--gen_timeout',  type=int,   default=60,
-                    help='Per-CMA-generation timeout in seconds; aborts a run instead of '
-                         'hanging if a candidate hits a near-singular T/Q (see rtbmlib.TrainingTimeout)')
+                    help='Per-CMA-generation timeout in seconds')
     p.add_argument('--out',          default='sweep_results.csv')
-    p.add_argument('--runs_dir',     default='sweep_runs',
-                    help='Where per-run convergence/valid-fraction .npy diagnostics are saved')
+    p.add_argument('--runs_dir',     default='sweep_runs')
     args = p.parse_args()
 
     os.makedirs(args.runs_dir, exist_ok=True)
 
-    # ── data: split/standardize ONCE with a fixed seed, reused for every run ──
-    # This isolates "optimisation luck" (varied via --seeds) from "which events
-    # landed in train/val/test" (fixed), per performance.md Section 5.
+    # load and split data
     np.random.seed(args.data_seed)
     print("[INFO] Loading datasets...")
     pi_data, rho_data = load_datasets()
@@ -85,30 +70,22 @@ def main():
     tr_std, [val_std, test_std, rho_std], _ = standardize(train_pi, val_pi, test_pi, rho_data)
     X_tr, X_val, X_test, X_rho = tr_std.T, val_std.T, test_std.T, rho_std.T
 
+    # sweep combos
     combos = [(nh, pb, seed) for nh in args.nh for pb in args.pb for seed in args.seeds]
 
-    # --out is opened in append mode so an interrupted sweep (e.g. killed after
-    # a hang -- see math.md Section 10) can be resumed without re-running
-    # already-completed combos. To make that safe when the requested grid
-    # overlaps a previous run (different --pb/--seeds covering the same
-    # point), skip any (nh, param_bound, seed) already present in the file
-    # rather than silently appending a duplicate row.
-    already_done = set()
-    if os.path.exists(args.out):
+    already_done = []
+    file_exists = os.path.exists(args.out)
+    if file_exists:
         with open(args.out, newline='') as f:
             for r in csv.DictReader(f):
-                already_done.add((int(r['nh']), float(r['param_bound']), int(r['seed'])))
-        if already_done:
-            print(f"[INFO] {len(already_done)} run(s) already in '{args.out}' -- will be skipped")
-
+                already_done.append((int(r['nh']), float(r['param_bound']), int(r['seed'])))
+        
     combos = [c for c in combos if c not in already_done]
-    print(f"[INFO] {len(combos)} runs to do: {len(args.nh)} nh x {len(args.pb)} pb x {len(args.seeds)} seeds, "
-          f"minus already-completed")
+    print(f"[INFO] {len(combos)} runs to do.")
 
-    write_header = not os.path.exists(args.out)
     csv_file = open(args.out, 'a', newline='')
     writer = csv.DictWriter(csv_file, fieldnames=CSV_FIELDS)
-    if write_header:
+    if not file_exists:
         writer.writeheader()
 
     for i, (nh, pb, seed) in enumerate(combos):
@@ -117,7 +94,6 @@ def main():
 
         row = {'nh': nh, 'param_bound': pb, 'seed': seed, 'ncores': args.ncores, 'status': 'ok'}
 
-        # model-and-CMA randomness uses --seeds; data above used --data_seed
         np.random.seed(seed)
 
         try:
