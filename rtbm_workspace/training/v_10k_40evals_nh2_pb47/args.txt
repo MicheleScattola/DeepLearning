@@ -1,0 +1,12 @@
+outfile: v_10k_40evals_nh2_pb47
+n_hidden: 2
+maxiter: 200
+tolfun: 1e-05
+ncores: 4
+param_bound: [4.0, 7.0]
+n_train: 10000
+optimize: True
+max_evals: 40
+save: True
+
+[OPT] RTBM(4, 2), param_bound=6.1, maxiter=200, tolfun=1e-05

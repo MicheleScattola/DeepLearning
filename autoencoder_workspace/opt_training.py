@@ -7,11 +7,11 @@ from hyperopt import fmin, tpe, hp, STATUS_OK, Trials, space_eval
 
 
 ETA_MAX = 2.5
-MAX_EVALS = 30
+MAX_EVALS = 40
 
 def setupParallel():
     physical_cores = multiprocessing.cpu_count()
-    target = int(4)
+    target = physical_cores
     tf.config.threading.set_intra_op_parallelism_threads(target)
     tf.config.threading.set_inter_op_parallelism_threads(target)
     print(f"[SETUP] Tensorflow loaded on {target} physical cores.")
@@ -23,11 +23,17 @@ def loadDatasetMix():
     rho[:, 1] = np.clip(rho[:, 1], 0.0, 1.0)
     pi[:, 3] = (pi[:, 3] + ETA_MAX) / 5.0
     rho[:, 3] = (rho[:, 3] + ETA_MAX) / 5.0
+
+    #for train in zip(pi,rho):
+        #mu = train.mean(axis=0)
+        #std = train.std(axis=0)
+        #train = (train-mu)/std
+
     return pi, rho
 
 # search space for optimization
 space = {
-    'learning_rate': hp.loguniform('learning_rate', np.log(1e-4), np.log(1e-3)),
+    'learning_rate': hp.loguniform('learning_rate', np.log(1e-5), np.log(1e-3)),
     'bottleneck':    hp.choice('bottleneck', [2, 3]),
     'dense_1':       hp.choice('dense_1',    [16, 32]),
     'dense_2':       hp.choice('dense_2',    [8, 16]),
@@ -139,6 +145,12 @@ if __name__ == "__main__":
     )
 
     best_params = space_eval(space, best_indices)
+
+    import pickle
+    with open('hyperopt_trials.pkl', 'wb') as fh:
+        pickle.dump(trials, fh)
+    print("[INFO] Saved hyperopt trials to 'hyperopt_trials.pkl'")
+
     best_trial = trials.best_trial
     if best_trial is None:
         raise RuntimeError("Hyperopt did not return a best trial.")

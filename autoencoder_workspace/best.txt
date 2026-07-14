@@ -1,11 +1,11 @@
 
 =======================================================
 OPTIMIZED RESULTS:
-Learning Rate : 0.00057
+Learning Rate : 0.00046
 Activation    : relu
 Bottleneck    : 3D
 Dense Layer 1 : 32 nodes
 Dense Layer 2 : 16 nodes
-Best Val Loss (MSE)   : 3.534344e-06
+Best Val Loss (MSE)   : 3.756992e-06
 =======================================================
 

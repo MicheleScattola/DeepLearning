@@ -1,0 +1,12 @@
+outfile: opt_10k_maxevals40_nh23_pb4to8
+n_hidden: 2
+maxiter: 200
+tolfun: 1e-05
+ncores: 8
+param_bound: 5.0
+n_train: 10000
+optimize: True
+max_evals: 40
+save: True
+
+[OPT] RTBM(4, 3), param_bound=7.1, maxiter=200, tolfun=1e-05

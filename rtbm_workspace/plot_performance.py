@@ -192,6 +192,28 @@ def plot_compute_scaling(df, outdir):
     print(f"[PLOT] {path}")
 
 
+def plot_violin_auc(df, outdir):
+    """AUC distribution as violins per N_hidden, across all seeds and param_bounds."""
+    ok = df[(df['status'] == 'ok') & (df['auc'].notna()) & (df['auc'] > 0)]
+    nhs = sorted(ok['nh'].unique())
+    data = [ok[ok['nh'] == nh]['auc'].values for nh in nhs]
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+    parts = ax.violinplot(data, showmedians=True, showextrema=True)
+    for pc in parts['bodies']:
+        pc.set_alpha(0.7)
+    ax.set_xticks(range(1, len(nhs) + 1))
+    ax.set_xticklabels([f'$N_h$={int(nh)}' for nh in nhs])
+    ax.set_xlabel('Hidden units $N_h$')
+    ax.set_ylabel('AUC')
+    ax.set_title('RTBM: AUC across sweep', fontweight='bold')
+    ax.grid(True, linestyle=':', alpha=0.6)
+    plt.tight_layout()
+    path = os.path.join(outdir, 'violin_auc_nh.png')
+    plt.savefig(path, dpi=300); plt.close()
+    print(f"[PLOT] {path}")
+
+
 def plot_convergence_and_valid_fraction(df, best_pb, runs_dir, outdir):
     ok  = df[df['status'] == 'ok']
     fig1, ax1 = plt.subplots(figsize=(8, 5))
@@ -256,6 +278,7 @@ def main():
     plot_heatmap(df, args.outdir)
     plot_compute_scaling(df, args.outdir)
     plot_convergence_and_valid_fraction(df, best_pb, args.runs_dir, args.outdir)
+    plot_violin_auc(df, args.outdir)
 
 
 if __name__ == '__main__':

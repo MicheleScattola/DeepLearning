@@ -14,6 +14,9 @@ from rtbmlib import (
     make_rtbm, train_rtbm, mean_nll,
 )
 
+def parse_float_list(s):
+    return [float(x) for x in s.split(',')]
+
 # argparse
 parser = argparse.ArgumentParser(prog='RTBMTraining',
                                  description='RTBM training and hyperparameter search')
@@ -22,7 +25,7 @@ parser.add_argument('-nh', '--n_hidden',    type=int,   default=2)
 parser.add_argument('--maxiter',            type=int,   default=200)
 parser.add_argument('--tolfun',             type=float, default=1e-5)
 parser.add_argument('--ncores',             type=int,   default=PARALLEL_CORES)
-parser.add_argument('--param_bound',        type=float, default=5.0)
+parser.add_argument('--param_bound',        type=parse_float_list, default=[4.0,8.0])
 parser.add_argument('--n_train',            type=int,   default=8000,
                     help='Number of pi events used for CMA-ES training (80/20 train/val split)')
 parser.add_argument('--optimize',           action='store_true',
@@ -47,8 +50,8 @@ SEARCH_MAXITER = 150   # fast per-trial iterations during search
 SEARCH_TOLFUN  = 1e-4
 
 search_space = {
-    'n_hidden':    hp.choice('n_hidden',    [2]),
-    'param_bound': hp.uniform('param_bound', 7.0, 8.0),
+    'n_hidden':    hp.choice('n_hidden',    [args.n_hidden]),
+    'param_bound': hp.uniform('param_bound', args.param_bound[0], args.param_bound[1]),
 }
 
 

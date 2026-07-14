@@ -49,8 +49,8 @@ def loadDatasetMix():
   rho = np.load('../datasets/rho.npy')
   pi[:, 1] = np.clip(pi[:, 1], 0.0, 1.0)
   rho[:, 1] = np.clip(rho[:, 1], 0.0, 1.0)
-  pi[:, 3] = (pi[:, 3] - ETA_MAX) / 5.0
-  rho[:, 3] = (rho[:, 3] - ETA_MAX) / 5.0
+  pi[:, 3] = (pi[:, 3] + ETA_MAX) / 5.0
+  rho[:, 3] = (rho[:, 3] + ETA_MAX) / 5.0
   return pi, rho
 
 def encoder(inputs):
