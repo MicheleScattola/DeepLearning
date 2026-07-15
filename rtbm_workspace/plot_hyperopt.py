@@ -1,8 +1,7 @@
 """Violin plots for the RTBM Bayesian hyperparameter search.
 
-Expects two separate optimization runs with N_h fixed (one per pkl),
-each searching only over param_bound. Produces one subplot per N_h,
-showing val_NLL distribution binned by param_bound.
+One violin per N_h file, showing the NLL distribution across all
+param_bound values tested.
 
 Run from rtbm_workspace/:
     python plot_hyperopt.py \
@@ -11,47 +10,23 @@ Run from rtbm_workspace/:
 """
 import argparse
 import pickle
-import numpy as np
+import pandas as pd
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 CRASH_THRESHOLD = 1e8
-N_BINS          = 4   # param_bound bins per subplot
+PALETTE         = {2: 'steelblue', 3: 'darkorange'}
 
 
-def load_trials(path):
+def load_trials(path, nh):
     trials = pickle.load(open(path, 'rb'))
-    ok = [t for t in trials.trials
-          if t['result']['status'] == 'ok' and t['result']['loss'] < CRASH_THRESHOLD]
-    pb  = [t['misc']['vals']['param_bound'][0] for t in ok]
+    ok  = [t for t in trials.trials
+           if t['result']['status'] == 'ok' and t['result']['loss'] < CRASH_THRESHOLD]
     nll = [t['result']['loss'] for t in ok]
-    return np.array(pb), np.array(nll)
-
-
-def violin_panel(ax, pb, nll, nh, color):
-    edges  = np.linspace(pb.min(), pb.max(), N_BINS + 1)
-    labels = [f'[{edges[i]:.1f}, {edges[i+1]:.1f}]' for i in range(N_BINS)]
-    groups = [nll[(pb >= edges[i]) & (pb < edges[i + 1])] for i in range(N_BINS)]
-    # last bin is closed on the right
-    groups[-1] = nll[(pb >= edges[-2]) & (pb <= edges[-1])]
-
-    data        = [g for g in groups if len(g) >= 2]
-    tick_labels = [labels[i] for i, g in enumerate(groups) if len(g) >= 2]
-
-    if data:
-        parts = ax.violinplot(data, showmedians=True, showextrema=True)
-        for pc in parts['bodies']:
-            pc.set_facecolor(color)
-            pc.set_alpha(0.7)
-        ax.set_xticks(range(1, len(data) + 1))
-        ax.set_xticklabels(tick_labels, rotation=15, ha='right')
-
-    n_removed = len(pb) - sum(len(g) for g in data)
-    ax.set_title(f'$N_h$ = {nh}  (n={len(pb)}, {n_removed} sparse bins dropped)',
-                 fontsize=10)
-    ax.set_xlabel('param_bound range')
-    ax.grid(True, linestyle=':', alpha=0.6)
+    print(f"[INFO] N_h={nh}: {len(nll)} trials")
+    return pd.DataFrame({'NLL': nll, 'nh': f'$N_h={nh}$'})
 
 
 def main():
@@ -61,17 +36,21 @@ def main():
     p.add_argument('--out', default='hyperopt_violin.png')
     args = p.parse_args()
 
-    pb2, nll2 = load_trials(args.nh2)
-    pb3, nll3 = load_trials(args.nh3)
-    print(f"[INFO] N_h=2: {len(pb2)} trials | N_h=3: {len(pb3)} trials")
+    df = pd.concat([load_trials(args.nh2, 2), load_trials(args.nh3, 3)], ignore_index=True)
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 5), sharey=True)
-    fig.suptitle('RTBM: val NLL vs param_bound (Bayesian search)', fontweight='bold')
+    palette = {f'$N_h={nh}$': color for nh, color in PALETTE.items()}
+    order   = [f'$N_h={nh}$' for nh in sorted(PALETTE)]
 
-    violin_panel(ax1, pb2, nll2, nh=2, color='steelblue')
-    violin_panel(ax2, pb3, nll3, nh=3, color='darkorange')
-    ax1.set_ylabel('Val NLL / event')
-
+    _, ax = plt.subplots(figsize=(7, 5))
+    sns.violinplot(data=df, x='nh', y='NLL', order=order,
+                   hue='nh', hue_order=order, palette=palette,
+                   inner='point', legend=True, ax=ax)
+    ax.set_xlabel('Hidden units $N_h$')
+    ax.set_ylabel('NLL / event')
+    ax.set_title(r'RTBM hyperopt: NLL vs $N_h$', fontweight='bold')
+    ax.grid(True, linestyle=':', alpha=0.6)
+    #if (leg := ax.get_legend()):
+        #leg.set(loc='upper center', ncols=2)
     plt.tight_layout()
     plt.savefig(args.out, dpi=300)
     plt.close()

@@ -53,20 +53,20 @@ if __name__ == "__main__":
   rho[:, 1] = np.clip(rho[:, 1], 0.0, 1.0)
   fig, ax = plt.subplots(2, 2, figsize=(8,8))
   fig.suptitle(r'$\pi$ VS $\rho$ Standar-Model like datasets',fontweight='bold')
-  ax[0,0].hist(rho[:,0],histtype='step', linewidth=1.5,label='RHO',bins=50)
-  ax[0,0].hist(pi[:,0] ,histtype='step', linewidth=1.5,label='PI', bins=50)
+  ax[0,0].hist(rho[:,0],histtype='step', linewidth=1.5,label='RHO',bins=50,color='red')
+  ax[0,0].hist(pi[:,0] ,histtype='step', linewidth=1.5,label='PI', bins=50,color='blue')
   ax[0,0].set(title=r'Visible fraction $x_{vis} = E_{track} / E_\tau$',xlabel=r'$x_{vis}$',ylabel='Events')
   ax[0,0].legend()
-  ax[0,1].hist(rho[:,1],range=[0.0,1.0],histtype='step', linewidth=1.5,label='RHO',bins=50)
-  ax[0,1].hist(pi[:,1] ,range=[0.0,1.0],histtype='step', linewidth=1.5,label='PI', bins=50)
+  ax[0,1].hist(pi[:,1] ,range=[0.0,1.0],histtype='step', linewidth=1.5,label='PI', bins=50,color='blue')
+  ax[0,1].hist(rho[:,1],range=[0.0,1.0],histtype='step', linewidth=1.5,label='RHO',bins=50,color='red')
   ax[0,1].set(title=r'Track isolation in $\Delta R<0.4$',xlabel=r'$\Sigma E_{ph} / E_{track}$ (EFlowPhotons)',ylabel='Events')
   ax[0,1].legend()
-  ax[1,0].hist(rho[:,2],histtype='step', linewidth=1.5,label='RHO',bins=50)
-  ax[1,0].hist(pi[:,2] ,histtype='step', linewidth=1.5,label='PI', bins=50)
+  ax[1,0].hist(pi[:,2] ,histtype='step', linewidth=1.5,label='PI', bins=50,color='blue')
+  ax[1,0].hist(rho[:,2],histtype='step', linewidth=1.5,label='RHO',bins=50,color='red')
   ax[1,0].set(title=r'Fraction of HCAL energy in $\Delta R<0.2$',xlabel=r'$f_{had} = E_{HCAL} / E_{TOT}$',ylabel='Events')
   ax[1,0].legend()
-  ax[1,1].hist(rho[:,3],histtype='step', linewidth=1.5,label='RHO',bins=50)
-  ax[1,1].hist(pi[:,3] ,histtype='step', linewidth=1.5,label='PI', bins=50)
+  ax[1,1].hist(rho[:,3],histtype='step', linewidth=1.5,label='RHO',bins=50,color='red')
+  ax[1,1].hist(pi[:,3] ,histtype='step', linewidth=1.5,label='PI', bins=50,color='blue')
   ax[1,1].set(title=r'Pseudorapidity $\eta$',xlabel=r'$\eta_{track}$',ylabel='Events')
   ax[1,1].legend()
   #plt.legend()
@@ -110,6 +110,7 @@ if __name__ == "__main__":
   combined = pd.concat([rho_df, pi_df], ignore_index=True)
   g = sns.pairplot(combined, hue='process', vars=feat_labels,
                    hue_order=[r'$\rho$ background', r'$\pi$ signal'],
+                   palette={r'$\rho$ background': 'red', r'$\pi$ signal': 'blue'},
                    plot_kws={'alpha': 0.3, 's': 4},
                    diag_kind='kde')
   for ax in g.axes.flatten():

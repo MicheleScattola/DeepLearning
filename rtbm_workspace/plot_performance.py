@@ -126,13 +126,13 @@ def plot_scaling_per_param_bound(df, outdir):
         )
 
 
-def plot_heatmap(df, outdir):
-    ok    = df[(df['status'] == 'ok') & (df['param_bound'] < 15)]
-    good  = ok[ok['val_nll'] < CRASH_THRESHOLD]
+def _plot_heatmap(df, outdir, metric, filename, title, cmap, cbar_label):
+    ok   = df[(df['status'] == 'ok') & (df['param_bound'] < 15)]
+    good = ok[ok['val_nll'] < CRASH_THRESHOLD].dropna(subset=[metric])
     if good.empty:
-        print("[WARN] No non-crashed successful runs with param_bound > 15; skipping heatmap.")
+        print(f"[WARN] No usable runs for heatmap ({metric}); skipping.")
         return
-    grid  = good.pivot_table(values='val_nll', index='nh', columns='param_bound', aggfunc='mean')
+    grid = good.pivot_table(values=metric, index='nh', columns='param_bound', aggfunc='mean')
 
     n_ok    = ok.groupby(['nh', 'param_bound']).size().unstack(fill_value=0)
     n_crash = (ok[ok['val_nll'] >= CRASH_THRESHOLD]
@@ -143,8 +143,8 @@ def plot_heatmap(df, outdir):
     pb_vals = grid.columns.tolist()
 
     fig, ax = plt.subplots(figsize=(7.5, 5))
-    im = ax.imshow(grid.values, aspect='auto', cmap='viridis_r', origin='lower')
-    plt.colorbar(im, ax=ax, label='Mean validation NLL (crashed seeds excluded)')
+    im = ax.imshow(grid.values, aspect='auto', cmap=cmap, origin='lower')
+    plt.colorbar(im, ax=ax, label=cbar_label)
 
     for i, nh in enumerate(nh_vals):
         for j, pb in enumerate(pb_vals):
@@ -157,11 +157,22 @@ def plot_heatmap(df, outdir):
     ax.set_xticks(range(len(pb_vals))); ax.set_xticklabels([f'{pb:.2g}' for pb in pb_vals])
     ax.set_yticks(range(len(nh_vals))); ax.set_yticklabels([str(int(nh)) for nh in nh_vals])
     ax.set_xlabel('param_bound'); ax.set_ylabel('$N_h$')
-    ax.set_title(r'Validation NLL across (param_bound, $N_h$)', fontweight='bold')
+    ax.set_title(title, fontweight='bold')
     plt.tight_layout()
-    path = os.path.join(outdir, 'heatmap_pb_nh.png')
+    path = os.path.join(outdir, filename)
     plt.savefig(path, dpi=300); plt.close()
     print(f"[PLOT] {path}")
+
+
+def plot_heatmap(df, outdir):
+    _plot_heatmap(df, outdir,
+                  metric='val_nll', filename='heatmap_pb_nh.png',
+                  title=r'Validation NLL across (param_bound, $N_h$)',
+                  cmap='viridis_r', cbar_label='Mean validation NLL (crashed seeds excluded)')
+    _plot_heatmap(df, outdir,
+                  metric='auc', filename='heatmap_auc_pb_nh.png',
+                  title=r'AUC across (param_bound, $N_h$)',
+                  cmap='viridis', cbar_label='Mean AUC (crashed seeds excluded)')
 
 
 def plot_compute_scaling(df, outdir):
@@ -194,16 +205,14 @@ def plot_compute_scaling(df, outdir):
 
 def plot_violin_auc(df, outdir):
     """AUC distribution as violins per N_hidden, across all seeds and param_bounds."""
-    ok = df[(df['status'] == 'ok') & (df['auc'].notna()) & (df['auc'] > 0)]
-    nhs = sorted(ok['nh'].unique())
-    data = [ok[ok['nh'] == nh]['auc'].values for nh in nhs]
+    import seaborn as sns
+    ok = df[(df['status'] == 'ok') & (df['auc'].notna()) & (df['auc'] > 0)].copy()
+    ok['nh_label'] = ok['nh'].apply(lambda v: f'$N_h$={int(v)}')
+    order = [f'$N_h$={int(nh)}' for nh in sorted(ok['nh'].unique())]
 
-    fig, ax = plt.subplots(figsize=(7, 5))
-    parts = ax.violinplot(data, showmedians=True, showextrema=True)
-    for pc in parts['bodies']:
-        pc.set_alpha(0.7)
-    ax.set_xticks(range(1, len(nhs) + 1))
-    ax.set_xticklabels([f'$N_h$={int(nh)}' for nh in nhs])
+    _, ax = plt.subplots(figsize=(7, 5))
+    sns.violinplot(data=ok, x='nh_label', y='auc', order=order,
+                   inner='point', ax=ax)
     ax.set_xlabel('Hidden units $N_h$')
     ax.set_ylabel('AUC')
     ax.set_title('RTBM: AUC across sweep', fontweight='bold')

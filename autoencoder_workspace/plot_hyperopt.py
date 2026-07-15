@@ -5,10 +5,11 @@ Run from autoencoder_workspace/:
     python plot_hyperopt.py
 """
 import pickle
-import numpy as np
+import pandas as pd
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 # misc['vals'] stores each sampled value as a 1-element list.
 # For hp.choice the value is the index into the choices array.
@@ -33,29 +34,27 @@ losses = [t['result']['loss'] for t in ok]
 print(f"[INFO] Loaded {len(ok)} successful trials")
 
 cat_params = {
-    'bottleneck': ([2, 3],            'Bottleneck dim'),
+    'bottleneck': ([2, 3],            'Latent space'),
     'dense_1':    ([16, 32],          'Dense layer 1'),
     'dense_2':    ([8, 16],           'Dense layer 2'),
     'activation': (['tanh', 'relu'],  'Activation'),
 }
 
 fig, axes = plt.subplots(1, 4, figsize=(14, 5), sharey=True)
-fig.suptitle('Hyperopt search', fontweight='bold')
+fig.suptitle('AE hyperopt search', fontweight='bold')
 
 for i, (ax, (key, (choices, label))) in enumerate(zip(axes, cat_params.items())):
-    groups     = [[losses[j] for j, p in enumerate(params) if p[key] == c] for c in choices]
-    data       = [g for g in groups if g]
-    tick_labels = [str(c) for c, g in zip(choices, groups) if g]
-    if data:
-        parts = ax.violinplot(data, showmedians=True, showextrema=True)
-        for pc in parts['bodies']:
-            pc.set_alpha(0.7)
-        ax.set_xticks(range(1, len(data) + 1))
-        ax.set_xticklabels(tick_labels)
+    rows = [{'value': str(p[key]), 'loss': loss} for p, loss in zip(params, losses)]
+    df   = pd.DataFrame(rows)
+    # keep only categories that actually appear in the data
+    present = [str(c) for c in choices if str(c) in df['value'].values]
+    df = df[df['value'].isin(present)]
+    if not df.empty:
+        sns.violinplot(data=df, x='value', y='loss', order=present,
+                       inner='point', log_scale=True, ax=ax)
     if i == 0:
         ax.set_ylabel('Val Loss (MSE)')
     ax.set_xlabel(label)
-    ax.set_yscale('log')
     ax.grid(True, linestyle=':', alpha=0.6)
 
 plt.tight_layout()

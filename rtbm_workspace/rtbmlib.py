@@ -19,20 +19,6 @@ PARALLEL_CORES = int(PHYS_CORES / 2)
 GEN_TIMEOUT    = 60 
 
 
-@contextmanager
-def _time_limit(seconds):
-    """SIGALRM-based timeout for the single-core (ncores=1) training path."""
-    def _handler(signum, frame):
-        raise RuntimeError(f"Generation exceeded {seconds}s time limit")
-    old_handler = signal.signal(signal.SIGALRM, _handler)
-    signal.alarm(seconds)
-    try:
-        yield
-    finally:
-        signal.alarm(0)
-        signal.signal(signal.SIGALRM, old_handler)
-
-
 # data manipulation
 def load_datasets(eta_max=ETA_MAX):
     pi  = np.load('../datasets/pi.npy')
@@ -176,17 +162,35 @@ def mean_nll(model, x_theta):
         return 1e9
 
 
-def compute_auc(scores_pi, scores_rho):
-    """ROC AUC for pi (label 0) vs rho (label 1), using -log P anomaly scores."""
-    
+def compute_roc(scores_pi, scores_rho):
+    """ROC curve and AUC for pi (label 0) vs rho (label 1)."""
     y_true   = np.concatenate([np.zeros(len(scores_pi)), np.ones(len(scores_rho))])
     y_scores = np.concatenate([scores_pi, scores_rho])
     mask     = np.isfinite(y_scores)
     fpr, tpr, _ = roc_curve(y_true[mask], y_scores[mask])
-    return float(auc(fpr, tpr))
+    return fpr, tpr, float(auc(fpr, tpr))
+
+
+def compute_auc(scores_pi, scores_rho):
+    """ROC AUC for pi (label 0) vs rho (label 1), using -log P anomaly scores."""
+    _, _, auc_val = compute_roc(scores_pi, scores_rho)
+    return auc_val
 
 
 def background_rejection(scores_pi, scores_rho, target_eff=0.95):
     """Fraction of rho rejected at a threshold giving target_eff pion signal efficiency."""
     threshold = np.percentile(scores_pi, target_eff * 100)
     return float(np.sum(scores_rho > threshold) / len(scores_rho))
+
+@contextmanager
+def _time_limit(seconds):
+    """SIGALRM-based timeout for the single-core (ncores=1) training path."""
+    def _handler(signum, frame):
+        raise RuntimeError(f"Generation exceeded {seconds}s time limit")
+    old_handler = signal.signal(signal.SIGALRM, _handler)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old_handler)
