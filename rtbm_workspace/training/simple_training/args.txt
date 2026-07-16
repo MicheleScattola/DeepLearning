@@ -1,0 +1,10 @@
+outfile: simple_training
+n_hidden: [2, 3]
+param_bound: 4.3
+n_train: 20000
+maxiter: 300
+ncores: 8
+optimize: True
+max_evals: 70
+pb_range: [8.0, 12.0]
+save: True

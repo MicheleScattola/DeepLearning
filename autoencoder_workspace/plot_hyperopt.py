@@ -40,6 +40,8 @@ cat_params = {
     'activation': (['tanh', 'relu'],  'Activation'),
 }
 
+PALETTE = sns.color_palette('Pastel1')
+
 fig, axes = plt.subplots(1, 4, figsize=(14, 5), sharey=True)
 fig.suptitle('AE hyperopt search', fontweight='bold')
 
@@ -51,7 +53,7 @@ for i, (ax, (key, (choices, label))) in enumerate(zip(axes, cat_params.items()))
     df = df[df['value'].isin(present)]
     if not df.empty:
         sns.violinplot(data=df, x='value', y='loss', order=present,
-                       inner='point', log_scale=True, ax=ax)
+                       inner='point', log_scale=True, color=PALETTE[i], ax=ax)
     if i == 0:
         ax.set_ylabel('Val Loss (MSE)')
     ax.set_xlabel(label)
