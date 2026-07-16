@@ -105,7 +105,7 @@ if __name__ == "__main__":
   plt.grid(True, linestyle=':', alpha=0.6)
   plt.tight_layout()
   
-  hist_outfile = 'ae_anomaly_scores.png'
+  hist_outfile = 'ae_anomaly_scores.pdf'
   plt.savefig(hist_outfile, dpi=300)
   plt.close()
   print(f"[PLOT] Saved histogram to '{hist_outfile}'")
@@ -130,7 +130,7 @@ if __name__ == "__main__":
   plt.grid(True, linestyle=':', alpha=0.6)
   plt.tight_layout()
   
-  roc_outfile = 'ae_roc_curve.png'
+  roc_outfile = 'ae_roc_curve.pdf'
   plt.savefig(roc_outfile, dpi=300)
   plt.close()
   print(f"[PLOT] Saved ROC curve to '{roc_outfile}'")

@@ -60,7 +60,7 @@ for i, (ax, (key, (choices, label))) in enumerate(zip(axes, cat_params.items()))
     ax.grid(True, linestyle=':', alpha=0.6)
 
 plt.tight_layout()
-outfile = 'hyperopt_violin.png'
+outfile = 'hyperopt_violin.pdf'
 plt.savefig(outfile, dpi=300)
 plt.close()
 print(f"[PLOT] Saved '{outfile}'")

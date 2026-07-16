@@ -1,6 +1,6 @@
 """RTBM inference time benchmark.
 
-Run from rtbm_workspace/ with the Python 3.8 venv:
+Run from rtbm_workspace/:
     .venv/bin/python3 inference_time.py [--model PATH]
 """
 import os
@@ -18,7 +18,7 @@ from rtbmlib import load_datasets, anomaly_scores
 N_WARMUP = 200
 N_RUNS   = 3
 
-DEFAULT_MODEL = 'training/f_single_70k_nh3_pb4_3_maxiter300/model.pkl'
+DEFAULT_MODEL = 'training/simple_training/model.pkl'
 
 
 def load_model(path):
