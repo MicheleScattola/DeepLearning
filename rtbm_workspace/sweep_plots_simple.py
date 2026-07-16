@@ -31,7 +31,7 @@ def plot_heatmap(df, metric, title, cmap, cbar_label, outdir):
     ax.set_ylabel('$N_h$')
     ax.set_title(title, fontweight='bold')
     plt.tight_layout()
-    path = os.path.join(outdir, f'heatmap_{metric}.png')
+    path = os.path.join(outdir, f'heatmap_{metric}.pdf')
     plt.savefig(path, dpi=150); plt.close()
     print(f"[PLOT] {path}")
 
@@ -49,7 +49,7 @@ def plot_time(df, outdir):
     ax.set_title('Training time vs $N_h$ (250 CMA iterations)', fontweight='bold')
     ax.grid(True, linestyle=':', alpha=0.6, axis='y')
     plt.tight_layout()
-    path = os.path.join(outdir, 'time_vs_nh.png')
+    path = os.path.join(outdir, 'time_vs_nh.pdf')
     plt.savefig(path, dpi=150); plt.close()
     print(f"[PLOT] {path}")
 
@@ -67,7 +67,7 @@ def plot_auc_vs_pb(df, outdir):
     ax.legend()
     ax.grid(True, linestyle=':', alpha=0.6)
     plt.tight_layout()
-    path = os.path.join(outdir, 'auc_vs_pb.png')
+    path = os.path.join(outdir, 'auc_vs_pb.pdf')
     plt.savefig(path, dpi=150); plt.close()
     print(f"[PLOT] {path}")
 
@@ -84,7 +84,7 @@ def plot_violin(df, metric, ylabel, title, outdir):
     ax.set_title(title, fontweight='bold')
     ax.grid(True, linestyle=':', alpha=0.6)
     plt.tight_layout()
-    path = os.path.join(outdir, f'violin_{metric}.png')
+    path = os.path.join(outdir, f'violin_{metric}.pdf')
     plt.savefig(path, dpi=150); plt.close()
     print(f"[PLOT] {path}")
 
@@ -104,7 +104,7 @@ def plot_time_vs_pb(df, outdir):
     ax.legend()
     ax.grid(True, linestyle=':', alpha=0.6)
     plt.tight_layout()
-    path = os.path.join(outdir, 'time_vs_pb_scatter.png')
+    path = os.path.join(outdir, 'time_vs_pb_scatter.pdf')
     plt.savefig(path, dpi=150); plt.close()
     print(f"[PLOT] {path}")
 
