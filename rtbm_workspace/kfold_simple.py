@@ -35,7 +35,7 @@ if __name__ == '__main__':
     p.add_argument('-nh', '--n_hidden',  type=int,   default=2)
     p.add_argument('--param_bound',      type=float, default=11.3160)
     p.add_argument('-k',                 type=int,   default=5)
-    p.add_argument('--maxiter',          type=int,   default=300)
+    p.add_argument('--maxiter',          type=int,   default=500)
     p.add_argument('--ncores',           type=int,   default=PARALLEL_CORES)
     p.add_argument('--out',              default=None,
                    help='Output file (default: auc_simple_nh<N>.txt)')

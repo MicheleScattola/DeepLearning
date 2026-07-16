@@ -1,0 +1,16 @@
+outfile: simple_long_training90k
+n_hidden: [2, 3]
+param_bound: 11.316
+n_train: 90000
+maxiter: 400
+ncores: 8
+optimize: False
+max_evals: 70
+pb_range: [8.0, 12.0]
+save: True
+
+[RESULT]
+n_hidden    : 2
+param_bound : 11.3160
+val_nll     : 3.9042
+test_auc    : 0.9311

@@ -7,7 +7,7 @@ from hyperopt import fmin, tpe, hp, STATUS_OK, Trials, space_eval
 
 
 ETA_MAX = 2.5
-MAX_EVALS = 40
+MAX_EVALS = 80
 
 def setupParallel():
     physical_cores = multiprocessing.cpu_count()

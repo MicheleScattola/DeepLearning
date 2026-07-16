@@ -1,9 +1,5 @@
 """RTBM training using the original theta CMA.train() function.
 
-Run from rtbm_workspace/:
-    .venv/bin/python3 training_simple.py [--save] [-nh N] [-o OUTDIR]
-                                         [--param_bound F] [--n_train N] [--maxiter N]
-                                         [--optimize] [--max_evals N]
 """
 import os
 import sys
@@ -27,8 +23,8 @@ from rtbmlib import (
 parser = argparse.ArgumentParser()
 parser.add_argument('-o',  '--outfile',    default='simple_training')
 parser.add_argument('-nh', '--n_hidden',   type=int,   nargs='+', default=[2, 3])
-parser.add_argument('--param_bound',       type=float, default=4.3)
-parser.add_argument('--n_train',           type=int,   default=20000)
+parser.add_argument('--param_bound',       type=float, default=5)
+parser.add_argument('--n_train',           type=int,   default=80000)
 parser.add_argument('--maxiter',           type=int,   default=300)
 parser.add_argument('--ncores',            type=int,   default=PARALLEL_CORES)
 parser.add_argument('--optimize',          action='store_true')
@@ -109,7 +105,7 @@ if __name__ == '__main__':
           f"param_bound={param_bound:.2f}  maxiter={args.maxiter}  ncores={ncores}")
 
     model = make_rtbm(N_VISIBLE, n_hidden, param_bound)
-    train_once(model, X_tr, ncores, args.maxiter,tol=0)
+    train_once(model, X_tr, ncores, args.maxiter,tol=1e-11)
 
     val_nll  = mean_nll(model, X_val)
     test_auc = compute_auc(anomaly_scores(model, X_test), anomaly_scores(model, X_rho))

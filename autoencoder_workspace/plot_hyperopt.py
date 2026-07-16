@@ -1,8 +1,6 @@
-"""Violin plots for the autoencoder Bayesian hyperparameter search.
+"""Violin plots for the autoencoder hyperparameter search.
 
 Requires 'hyperopt_trials.pkl' produced by opt_training.py.
-Run from autoencoder_workspace/:
-    python plot_hyperopt.py
 """
 import pickle
 import pandas as pd
@@ -11,9 +9,6 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-# misc['vals'] stores each sampled value as a 1-element list.
-# For hp.choice the value is the index into the choices array.
-# For hp.loguniform the value is already the sampled float (not the log).
 CHOICES = {
     'bottleneck': [2, 3],
     'dense_1':    [16, 32],
