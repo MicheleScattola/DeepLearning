@@ -40,7 +40,7 @@ cat_params = {
     'activation': (['tanh', 'relu'],  'Activation'),
 }
 
-PALETTE = sns.color_palette('Pastel1')
+PALETTE = sns.color_palette('tab10')
 
 fig, axes = plt.subplots(1, 4, figsize=(14, 5), sharey=True)
 fig.suptitle('AE hyperopt search', fontweight='bold')

@@ -1,0 +1,7 @@
+[RTBM RESULT]
+  N_hidden        : 2
+  Events          : 100000
+  Runs            : 3
+  Mean total time : 485.2 ms
+  Time per event  : 4.85 us/event
+  Throughput      : 206091 events/s

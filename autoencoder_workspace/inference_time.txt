@@ -1,6 +1,6 @@
 [AE RESULT]
   Events          : 100000
   Runs            : 5
-  Mean total time : 140.1 ms
-  Time per event  : 1.40 us/event
-  Throughput      : 713976 events/s
+  Mean total time : 140.8 ms
+  Time per event  : 1.41 us/event
+  Throughput      : 710323 events/s
