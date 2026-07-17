@@ -13,7 +13,6 @@ import sys
 import time
 import csv
 import argparse
-import threading
 import numpy as np
 import multiprocessing as mp
 
@@ -102,21 +101,8 @@ def main():
                     model = make_rtbm_rb1(N_VISIBLE, nh, pb)
 
                     t0 = time.perf_counter()
-                    _result = {}
-                    def _train():
-                        try:
-                            CMA(parallel=args.ncores > 1, ncores=args.ncores).train(
-                                log_nll_cost, model, X_tr, maxiter=args.maxiter, tolfun=1e-6)
-                            _result['ok'] = True
-                        except Exception as e:
-                            _result['error'] = e
-                    _t = threading.Thread(target=_train, daemon=True)
-                    _t.start()
-                    _t.join(timeout=900)
-                    if _t.is_alive():
-                        raise TimeoutError("CMA timed out after 900s")
-                    if 'error' in _result:
-                        raise _result['error']
+                    CMA(parallel=args.ncores > 1, ncores=args.ncores).train(
+                        log_nll_cost, model, X_tr, maxiter=args.maxiter, tolfun=1e-6)
                     elapsed = time.perf_counter() - t0
 
                     nll = mean_nll(model, X_val)
