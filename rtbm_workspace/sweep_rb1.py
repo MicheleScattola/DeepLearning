@@ -35,9 +35,6 @@ RANDOM_BOUND = 1.0
 def make_rtbm_rb1(nv, nh, param_bound):
     """Init RTBM with random_bound=1 and W=0.
 
-    No positivity retry loop — theta's CMA assigns NAN_PENALTY to invalid
-    candidates and moves away naturally, so the starting point doesn't need
-    to be valid.
     """
     m = RTBM(nv, nh, init_max_param_bound=param_bound,
              random_bound=RANDOM_BOUND,

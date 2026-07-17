@@ -63,7 +63,7 @@ def plot_time(ax, sm, color_simple, rb, color_rb1):
         std  = data['std_t'].values
         ax.plot(pb, mean, color=color, lw=2, marker='o', ms=4, ls=ls, label=label)
         ax.fill_between(pb, np.maximum(mean - std, 0), mean + std, color=color, alpha=0.2)
-    ax.legend(fontsize=9)
+    ax.legend()
 
 
 def plot_nll(ax, summary, color, label, ls='-'):
@@ -84,22 +84,28 @@ def main():
     sm_t = summarize_time(df_simple)
     rb_t = summarize_time(df_rb1)
 
+    plt.rcParams.update({
+        'axes.titlesize':  15,
+        'axes.labelsize':  13,
+        'xtick.labelsize': 11,
+        'ytick.labelsize': 11,
+        'legend.fontsize': 12,
+    })
+
     nh_vals = [2, 3]
-    TITLE = r'Sweep comparison: $r_b=\sqrt{p_b}$ vs $r_b=1$'
 
     # --- Figure 1: Mean NLL ---
     fig, axes = plt.subplots(1, 2, figsize=(11, 4.5), sharey=False)
-    fig.suptitle(TITLE, fontweight='bold', fontsize=11)
     for col, nh in enumerate(nh_vals):
         ax = axes[col]
         plot_nll(ax, sm_s[sm_s['nh'] == nh], COLOR_SIMPLE,
                  r'$r_b = \sqrt{p_b}$')
         plot_nll(ax, rb_s[rb_s['nh'] == nh], COLOR_RB1,
                  r'$r_b = 1$', ls='--')
-        ax.set_title(fr'$N_h = {nh}$', fontsize=12)
+        ax.set_title(fr'$N_h = {nh}$')
         ax.set_xlabel(r'param_bound $p_b$')
         ax.set_ylabel(r'Mean NLL $\pm\,1\sigma$')
-        ax.legend(fontsize=9)
+        ax.legend()
         ax.grid(True, linestyle=':', alpha=0.6)
         ax.set_xlim(left=0.5)
     plt.tight_layout()
@@ -109,17 +115,17 @@ def main():
 
     # --- Figure 2: ΔNLL ---
     fig, axes = plt.subplots(1, 2, figsize=(11, 4.5), sharey=False)
-    fig.suptitle(TITLE, fontweight='bold', fontsize=11)
+    pass
     for col, nh in enumerate(nh_vals):
         ax = axes[col]
         plot_delta_nll(ax, sm_s[sm_s['nh'] == nh], COLOR_SIMPLE,
                        r'$r_b = \sqrt{p_b}$')
         plot_delta_nll(ax, rb_s[rb_s['nh'] == nh], COLOR_RB1,
                        r'$r_b = 1$', ls='--')
-        ax.set_title(fr'$N_h = {nh}$', fontsize=12)
+        ax.set_title(fr'$N_h = {nh}$')
         ax.set_xlabel(r'param_bound $p_b$')
         ax.set_ylabel(r'$\Delta$NLL (rel. to NLL$_0=5.0$)')
-        ax.legend(fontsize=9)
+        ax.legend()
         ax.grid(True, linestyle=':', alpha=0.6)
         ax.set_xlim(left=0.5)
     plt.tight_layout()
@@ -129,12 +135,12 @@ def main():
 
     # --- Figure 3: Training time ---
     fig, axes = plt.subplots(1, 2, figsize=(11, 4.5), sharey=False)
-    fig.suptitle(TITLE, fontweight='bold', fontsize=11)
+    pass
     for col, nh in enumerate(nh_vals):
         ax = axes[col]
         plot_time(ax, sm_t[sm_t['nh'] == nh], COLOR_SIMPLE,
                       rb_t[rb_t['nh'] == nh], COLOR_RB1)
-        ax.set_title(fr'$N_h = {nh}$', fontsize=12)
+        ax.set_title(fr'$N_h = {nh}$')
         ax.set_xlabel(r'param_bound $p_b$')
         ax.set_ylabel('Mean training time (s)')
         ax.grid(True, linestyle=':', alpha=0.6)
