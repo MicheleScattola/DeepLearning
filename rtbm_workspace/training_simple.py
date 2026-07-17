@@ -22,7 +22,7 @@ from rtbmlib import (
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-o',  '--outfile',    default='simple_training')
-parser.add_argument('-nh', '--n_hidden',   type=int,   nargs='+', default=[2, 3])
+parser.add_argument('-nh', '--n_hidden',   type=int,   nargs='+', default=[2,3,4])
 parser.add_argument('--param_bound',       type=float, default=5)
 parser.add_argument('--n_train',           type=int,   default=80000)
 parser.add_argument('--maxiter',           type=int,   default=300)

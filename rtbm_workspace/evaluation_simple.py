@@ -46,7 +46,7 @@ def load_model_and_data(folder):
     return model, val_pi, X_val, X_test, X_rho
 
 
-def plot_density_check(model, X_val, val_pi, outdir):
+def plot_density_check(model, X_val, outdir):
     try:
         log_probs = np.real(model(X_val)).flatten()
     except np.linalg.LinAlgError:
@@ -55,16 +55,16 @@ def plot_density_check(model, X_val, val_pi, outdir):
     probs = np.exp(log_probs)
     w = probs / probs.sum() if probs.sum() > 0 else np.ones(len(probs)) / len(probs)
 
-    labels = [r'$x_{vis}$',
-              r'$\mathrm{Iso} = \Sigma E_{ph}/E_{track}$',
-              r'$f_{had} = E_{HCAL}/E_{tot}$',
-              r'$\eta$']
+    labels = [r'$x_{vis}$ (standardized)',
+              r'$\mathrm{Iso}$ (standardized)',
+              r'$f_{had}$ (standardized)',
+              r'$\eta$ (standardized)']
 
     fig, axes = plt.subplots(2, 2, figsize=(10, 8))
     fig.suptitle(r'RTBM: Density Check on $\tau\to\pi\nu$ (Validation)', fontweight='bold')
 
     for i, ax in enumerate(axes.flat):
-        feat = val_pi[:, i]
+        feat = X_val[i, :]
         bins = np.linspace(feat.min(), feat.max(), 40)
         ax.hist(feat, bins=bins, histtype='step', linewidth=1.5,
                 density=True, label='Validation data')
@@ -168,6 +168,6 @@ if __name__ == '__main__':
     sc_pi  = anomaly_scores(model, X_test)
     sc_rho = anomaly_scores(model, X_rho)
 
-    plot_density_check(model, X_val, val_pi, outdir)
+    plot_density_check(model, X_val, outdir)
     plot_anomaly_scores(sc_pi, sc_rho, outdir)
     plot_roc(sc_pi, sc_rho, outdir)

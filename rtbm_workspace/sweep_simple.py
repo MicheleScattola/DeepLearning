@@ -35,7 +35,7 @@ def train_once(model, X_tr, ncores, maxiter):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--nh',      type=int,   nargs='+', default=[1,2,3])
-    p.add_argument('--pb',      type=int,   nargs=2,   default=[11, 15],
+    p.add_argument('--pb',      type=int,   nargs='+',   default=[20,25],
                    metavar=('MIN', 'MAX'), help='integer param_bound range (inclusive)')
     p.add_argument('--n_runs',  type=int,   default=5)
     p.add_argument('--n_train', type=int,   default=10000)
@@ -71,11 +71,11 @@ def main():
         done = set(zip(df_done['nh'], df_done['param_bound'], df_done['run']))
         print(f"[INFO] Skipping {len(done)} already completed runs")
 
-    pb_values = list(range(args.pb[0], args.pb[1] + 1))
-    print(f"[INFO] param_bound values: {pb_values}")
+    
+    print(f"[INFO] param_bound values: {args.pb}")
 
     for nh in args.nh:
-        for pb in pb_values:
+        for pb in args.pb:
             for run in range(1, args.n_runs + 1):
                 if (nh, pb, run) in done:
                     print(f"[SKIP] nh={nh}  pb={pb}  run={run}/{args.n_runs}")
